@@ -13,11 +13,13 @@ function isValidEmail(email) {
 }
 
 export const authService = {
-  async register(email, password) {
+  async register(firstName, lastName, email, password) {
+    const normalizedFirstName = firstName.trim();
+    const normalizedLastName = lastName.trim();
     const normalizedEmail = email.trim().toLowerCase();
 
-    if (!normalizedEmail || !password) {
-      throw new Error('Preencha e-mail e senha.');
+    if (!normalizedFirstName || !normalizedLastName || !normalizedEmail || !password) {
+      throw new Error('Preencha nome, sobrenome, e-mail e senha.');
     }
     if (!isValidEmail(normalizedEmail)) {
       throw new Error('Insira um e-mail válido.');
@@ -39,7 +41,12 @@ export const authService = {
 
     await AsyncStorage.setItem(
       STORAGE_KEYS.CREDENTIALS,
-      JSON.stringify({ email: normalizedEmail, passwordHash })
+      JSON.stringify({
+        firstName: normalizedFirstName,
+        lastName: normalizedLastName,
+        email: normalizedEmail,
+        passwordHash,
+      })
     );
   },
 
@@ -64,7 +71,11 @@ export const authService = {
       throw new Error('E-mail ou senha incorretos.');
     }
 
-    const session = { email: credentials.email };
+    const session = {
+      firstName: credentials.firstName,
+      lastName: credentials.lastName,
+      email: credentials.email,
+    };
     await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
     return session;
   },

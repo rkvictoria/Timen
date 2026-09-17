@@ -20,6 +20,8 @@ export default function LoginScreen() {
   const [mode, setMode] = useState('login'); // 'login' | 'cadastro'
   const [loginEmail, setLoginEmail] = useState('');
   const [loginSenha, setLoginSenha] = useState('');
+  const [cadastroNome, setCadastroNome] = useState('');
+  const [cadastroSobrenome, setCadastroSobrenome] = useState('');
   const [cadastroEmail, setCadastroEmail] = useState('');
   const [cadastroSenha, setCadastroSenha] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -47,8 +49,10 @@ export default function LoginScreen() {
     setIsSubmitting(true);
     try {
       if (mode === 'cadastro') {
-        await register(cadastroEmail, cadastroSenha);
+        await register(cadastroNome, cadastroSobrenome, cadastroEmail, cadastroSenha);
         setMode('login');
+        setCadastroNome('');
+        setCadastroSobrenome('');
         setCadastroSenha('');
         setErrorMessage('Cadastro realizado. Faça login.');
       } else {
@@ -118,6 +122,37 @@ export default function LoginScreen() {
               {!!errorMessage && <Text style={styles.errorText}>{errorMessage}</Text>}
 
               <View style={styles.form}>
+              {mode === 'cadastro' && (
+                <View style={styles.nameRow}>
+                  <View style={[styles.field, styles.nameField]}>
+                    <Text style={styles.label}>NOME</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Seu nome"
+                      placeholderTextColor={colors.disabled}
+                      value={cadastroNome}
+                      onChangeText={setCadastroNome}
+                      autoCapitalize="words"
+                      autoComplete="given-name"
+                      textContentType="givenName"
+                    />
+                  </View>
+
+                  <View style={[styles.field, styles.nameField]}>
+                    <Text style={styles.label}>SOBRENOME</Text>
+                    <TextInput
+                      style={styles.input}
+                      placeholder="Seu sobrenome"
+                      placeholderTextColor={colors.disabled}
+                      value={cadastroSobrenome}
+                      onChangeText={setCadastroSobrenome}
+                      autoCapitalize="words"
+                      autoComplete="family-name"
+                      textContentType="familyName"
+                    />
+                  </View>
+                </View>
+              )}
               <View style={styles.field}>
                 <Text style={styles.label}>E-MAIL</Text>
                 <TextInput
@@ -269,6 +304,13 @@ const styles = StyleSheet.create({
   },
   field: {
     marginBottom: 16,
+  },
+  nameRow: {
+    flexDirection: 'row',
+    gap: 12,
+  },
+  nameField: {
+    flex: 1,
   },
   label: {
     color: '#6C6861',
