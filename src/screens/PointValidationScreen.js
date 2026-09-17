@@ -170,11 +170,10 @@ export default function PointValidationScreen({ navigation }) {
   );
 
   const renderScanner = () => (
-    <>
-      <Text style={styles.title}>Escaneie o QR Code{`\n`}do local.</Text>
-      <View style={styles.scannerCard}>{Platform.OS === 'web' ? <Text style={styles.mapFallback}>Use o aplicativo móvel para ler o QR Code</Text> : cameraPermission?.granted ? <CameraView style={styles.camera} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={finishValidation} /> : <Pressable style={styles.permissionButton} onPress={openScanner}><Text style={styles.secondaryButtonText}>Permitir câmera</Text></Pressable>}<View pointerEvents="none" style={styles.scannerFrame} /></View>
-      <Text style={styles.scannerHelp}>Posicione o QR Code dentro do quadro.</Text>
-    </>
+    <View style={[styles.cameraOnlyPage, { height: Math.max(windowHeight, 1) }]}> 
+      {cameraPermission?.granted ? <CameraView style={styles.cameraOnly} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={finishValidation} /> : <Pressable style={styles.permissionButton} onPress={openScanner}><Text style={styles.secondaryButtonText}>Permitir câmera</Text></Pressable>}
+      <View pointerEvents="none" style={styles.scannerFrame} />
+    </View>
   );
 
   const renderSuccess = () => (
@@ -207,7 +206,7 @@ export default function PointValidationScreen({ navigation }) {
         {step === 'location' && <Text style={styles.headerTitle}>Aonde você está?</Text>}
         {step === 'identity' && <Text style={styles.identityHeaderTitle}>Por favor, confirme que é você.</Text>}
       </View>
-      <ScrollView style={[styles.sheet, step === 'identity' && styles.identitySheet, identityFullscreen && styles.fullscreenIdentitySheet]} contentContainerStyle={[styles.content, step === 'location' && styles.locationContent, step === 'identity' && styles.identityContent]} scrollEnabled={step !== 'location' && step !== 'identity'} showsVerticalScrollIndicator={false}>
+      <ScrollView style={[styles.sheet, step === 'identity' && styles.identitySheet, step === 'scan' && styles.cameraPage, identityFullscreen && styles.fullscreenIdentitySheet]} contentContainerStyle={[styles.content, step === 'location' && styles.locationContent, step === 'identity' && styles.identityContent, step === 'scan' && styles.cameraContent]} scrollEnabled={step !== 'location' && step !== 'identity' && step !== 'scan'} showsVerticalScrollIndicator={false}>
         <Animated.View style={[styles.stepContent, { opacity: stepOpacity, transform: [{ scale: stepScale }] }]}>
           {step === 'location' && renderLocation()}
           {step === 'identity' && renderIdentity()}
@@ -253,9 +252,9 @@ const styles = StyleSheet.create({
   identitySheet: { backgroundColor: colors.primary, borderTopLeftRadius: 40, borderTopRightRadius: 40, flex: 1 },
   fullscreenIdentitySheet: { borderRadius: 0 },
   identityContent: { flexGrow: 1, minHeight: '100%', paddingHorizontal: 0, paddingTop: 0 },
-  identityLayout: { alignItems: 'center', flex: 1, justifyContent: 'space-between', minHeight: 560, paddingHorizontal: 24, paddingVertical: 40, width: '100%' },
+  identityLayout: { alignItems: 'center', flex: 1, justifyContent: 'space-between', minHeight: 560, paddingHorizontal: 24, paddingVertical: 40, position: 'relative', width: '100%' },
   identityBiometricArea: { alignItems: 'center', flex: 1, justifyContent: 'center', paddingTop: 0, width: '100%' },
-  identityResult: { alignItems: 'center', bottom: 0, justifyContent: 'center', left: 24, position: 'absolute', right: 24, top: 0 },
+  identityResult: { alignItems: 'center', bottom: 0, justifyContent: 'center', left: 0, position: 'absolute', right: 0, top: 0 },
   identityBiometricTitle: { color: colors.background, fontSize: 20, fontWeight: '600', marginTop: 18 },
   identityBiometricHint: { color: '#C7C0B7', fontSize: 13, marginTop: 7, textAlign: 'center' },
   identityFooter: { alignItems: 'center', bottom: 40, left: 24, position: 'absolute', right: 24 },
@@ -273,4 +272,9 @@ const styles = StyleSheet.create({
   currentTime: { alignSelf: 'center', backgroundColor: '#FFFFFF', color: colors.text, fontSize: 25, fontWeight: '600', paddingVertical: 17, textAlign: 'center', width: '36%' },
   statusBadge: { alignItems: 'center', alignSelf: 'stretch', backgroundColor: colors.primary, borderBottomLeftRadius: 0, borderRadius: 0, borderTopLeftRadius: 30, flex: 1, flexDirection: 'row', gap: 6, justifyContent: 'center', paddingHorizontal: 10, paddingVertical: 7 },
   statusBadgeDenied: { backgroundColor: colors.primary },
+  cameraPage: { backgroundColor: colors.primary },
+  cameraContent: { flexGrow: 1, paddingBottom: 0, paddingHorizontal: 0, paddingTop: 0 },
+  cameraOnlyPage: { alignSelf: 'stretch', backgroundColor: colors.primary, borderRadius: 40, flex: 0, overflow: 'hidden', position: 'relative' },
+  cameraOnly: { flex: 1 },
+  scannerFrame: { borderColor: colors.background, borderRadius: 16, borderWidth: 2, height: 220, left: '50%', position: 'absolute', top: '50%', transform: [{ translateX: -110 }, { translateY: -110 }], width: 220 },
 });
