@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ActivityIndicator, Animated, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
@@ -17,7 +17,7 @@ function greeting() {
   return hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
 }
 
-export default function HomeScreen() {
+export default function HomeScreen({ navigation }) {
   const { user, logout } = useAuth();
   const [region, setRegion] = useState(fallbackRegion);
   const [locationText, setLocationText] = useState('Buscando sua localização…');
@@ -70,7 +70,7 @@ export default function HomeScreen() {
     ],
   });
 
-  const selectTab = (index, openRegister = false) => {
+  const selectTab = (index) => {
     const tab = tabs[index];
     activeTabRef.current = tab;
     setActiveTab(tab);
@@ -81,10 +81,9 @@ export default function HomeScreen() {
       useNativeDriver: true,
     }).start();
 
-    if (tab === 'register' && openRegister) {
-      Alert.alert('Validação de ponto', 'A próxima tela confirmará biometria, lerá o QR Code e validará a localização.');
-    }
   };
+
+  const goToPointValidation = () => navigation.navigate('PointValidation');
 
   const panResponder = useRef(
     PanResponder.create({
@@ -137,7 +136,7 @@ export default function HomeScreen() {
           <View style={styles.hoursBlock}><Text style={styles.hours}>04h 58m</Text><Text style={styles.hoursLabel}>trabalhadas</Text></View>
         </View>
 
-        <Pressable style={({ pressed }) => [styles.registerButton, pressed && styles.pressed]} onPress={() => Alert.alert('Validação de ponto', 'A próxima tela confirmará biometria, lerá o QR Code e validará a localização.')}>
+        <Pressable style={({ pressed }) => [styles.registerButton, pressed && styles.pressed]} onPress={goToPointValidation}>
           <View><Text style={styles.registerText}>Registrar ponto</Text><Text style={styles.registerHint}>Biometria · QR Code · Localização</Text></View>
           <Text style={styles.arrow}>→</Text>
         </Pressable>
@@ -161,7 +160,7 @@ export default function HomeScreen() {
           <Animated.View style={getIconAnimation(1)}><Ionicons name="time-outline" size={23} color={activeTab === 'history' ? colors.background : '#BDB8B0'} /></Animated.View>
         </Pressable>
         <View style={styles.navItem}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Registrar ponto" style={[styles.mainNavItem, activeTab === 'register' && styles.mainNavItemActive]} onPress={() => selectTab(2, true)}>
+          <Pressable accessibilityRole="button" accessibilityLabel="Registrar ponto" style={[styles.mainNavItem, activeTab === 'register' && styles.mainNavItemActive]} onPress={() => { selectTab(2); goToPointValidation(); }}>
             <Animated.View style={getIconAnimation(2)}><Ionicons name="scan-outline" size={25} color={colors.primary} /></Animated.View>
           </Pressable>
         </View>
