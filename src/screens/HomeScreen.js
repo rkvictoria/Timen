@@ -26,7 +26,6 @@ export default function HomeScreen() {
   const tabPosition = useRef(new Animated.Value(0)).current;
   const dragStartPosition = useRef(0);
   const activeTabRef = useRef('home');
-  const iconShakeAnimations = useRef(tabs.map(() => new Animated.Value(0))).current;
   const { width } = useWindowDimensions();
   const tabWidth = (width - 60) / 4;
   const firstName = useMemo(() => {
@@ -59,20 +58,8 @@ export default function HomeScreen() {
     getLocation();
   }, []);
 
-  const animateSelectedIcon = (index) => {
-    const shake = iconShakeAnimations[index];
-    shake.setValue(0);
-    Animated.sequence([
-      Animated.timing(shake, { toValue: -2, duration: 55, useNativeDriver: true }),
-      Animated.timing(shake, { toValue: 2, duration: 80, useNativeDriver: true }),
-      Animated.timing(shake, { toValue: -1, duration: 65, useNativeDriver: true }),
-      Animated.timing(shake, { toValue: 0, duration: 55, useNativeDriver: true }),
-    ]).start();
-  };
-
   const getIconAnimation = (index) => ({
     transform: [
-      { translateX: iconShakeAnimations[index] },
       {
         scale: tabPosition.interpolate({
           inputRange: tabs.map((_, tabIndex) => tabIndex * tabWidth),
@@ -93,7 +80,6 @@ export default function HomeScreen() {
       tension: 90,
       useNativeDriver: true,
     }).start();
-    animateSelectedIcon(index);
 
     if (tab === 'register' && openRegister) {
       Alert.alert('Validação de ponto', 'A próxima tela confirmará biometria, lerá o QR Code e validará a localização.');
