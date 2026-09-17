@@ -28,6 +28,7 @@ export default function PointValidationScreen({ navigation }) {
   const stepScale = useRef(new Animated.Value(1)).current;
   const identityFillAnimation = useRef(new Animated.Value(0)).current;
   const qrButtonAnimation = useRef(new Animated.Value(0)).current;
+  const scanLocked = useRef(false);
   const [currentLocation, setCurrentLocation] = useState(null);
   const [locationMessage, setLocationMessage] = useState('Buscando sua localização…');
   const [isLoadingLocation, setIsLoadingLocation] = useState(true);
@@ -36,6 +37,7 @@ export default function PointValidationScreen({ navigation }) {
   const [showQrAction, setShowQrAction] = useState(false);
   const [identityFullscreen, setIdentityFullscreen] = useState(false);
   const [identityFillActive, setIdentityFillActive] = useState(false);
+  const [scannerSize, setScannerSize] = useState(null);
   const [recordedAt, setRecordedAt] = useState(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const { height: windowHeight } = useWindowDimensions();
@@ -122,7 +124,32 @@ export default function PointValidationScreen({ navigation }) {
       const permission = await requestCameraPermission();
       if (!permission.granted) return;
     }
+    scanLocked.current = false;
     setStep('scan');
+  };
+
+  const handleBarcodeScanned = ({ bounds, cornerPoints }) => {
+    if (scanLocked.current || !scannerSize) return;
+    const points = cornerPoints?.filter((point) => Number.isFinite(point.x) && Number.isFinite(point.y)) || [];
+    const barcodeBounds = bounds?.origin && bounds?.size ? {
+      left: bounds.origin.x,
+      top: bounds.origin.y,
+      right: bounds.origin.x + bounds.size.width,
+      bottom: bounds.origin.y + bounds.size.height,
+    } : points.length ? {
+      left: Math.min(...points.map((point) => point.x)),
+      top: Math.min(...points.map((point) => point.y)),
+      right: Math.max(...points.map((point) => point.x)),
+      bottom: Math.max(...points.map((point) => point.y)),
+    } : null;
+    if (!barcodeBounds) return;
+    const frameLeft = (scannerSize.width - 220) / 2;
+    const frameTop = (scannerSize.height - 220) / 2;
+    const frameRight = frameLeft + 220;
+    const frameBottom = frameTop + 220;
+    if (barcodeBounds.left < frameLeft || barcodeBounds.top < frameTop || barcodeBounds.right > frameRight || barcodeBounds.bottom > frameBottom) return;
+    scanLocked.current = true;
+    finishValidation();
   };
 
   const finishValidation = () => {
@@ -170,8 +197,8 @@ export default function PointValidationScreen({ navigation }) {
   );
 
   const renderScanner = () => (
-    <View style={[styles.cameraOnlyPage, { height: Math.max(windowHeight, 1) }]}> 
-      {cameraPermission?.granted ? <CameraView style={styles.cameraOnly} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={finishValidation} /> : <Pressable style={styles.permissionButton} onPress={openScanner}><Text style={styles.secondaryButtonText}>Permitir câmera</Text></Pressable>}
+    <View onLayout={({ nativeEvent }) => setScannerSize(nativeEvent.layout)} style={[styles.cameraOnlyPage, { height: Math.max(windowHeight, 1) }]}>
+      {cameraPermission?.granted ? <CameraView style={styles.cameraOnly} facing="back" barcodeScannerSettings={{ barcodeTypes: ['qr'] }} onBarcodeScanned={handleBarcodeScanned} /> : <Pressable style={styles.permissionButton} onPress={openScanner}><Text style={styles.secondaryButtonText}>Permitir câmera</Text></Pressable>}
       <View pointerEvents="none" style={styles.scannerFrame} />
     </View>
   );
