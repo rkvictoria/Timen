@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -9,9 +9,9 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { colors } from '../styles/colors';
 import { savePoint } from '../services/pointService';
+import { useAuth } from '../hooks/useAuth';
 
-// Trocar para real
-const WORKPLACE = { name: 'Escritório', latitude: -22.52621608967333, longitude: -43.71406731187226, allowedRadius: 10000000 };
+const FALLBACK_REGION = { latitude: -22.9068, longitude: -43.1729 };
 
 function distanceInMeters(from, to) {
   const earthRadius = 6371000;
@@ -23,6 +23,11 @@ function distanceInMeters(from, to) {
 }
 
 export default function PointValidationScreen({ navigation, route }) {
+  const { user, updateWorkplaceLocation } = useAuth();
+  const workplaceName = user?.workplace || 'Local de trabalho';
+  const hasWorkplaceLocation = !!user?.workplaceLocation;
+  const workplace = hasWorkplaceLocation ? { ...user.workplaceLocation, name: workplaceName } : null;
+  
   const [step, setStep] = useState('location');
   const backArrowOffset = useRef(new Animated.Value(0)).current;
   const stepOpacity = useRef(new Animated.Value(0)).current;
@@ -30,6 +35,7 @@ export default function PointValidationScreen({ navigation, route }) {
   const identityFillAnimation = useRef(new Animated.Value(0)).current;
   const qrButtonAnimation = useRef(new Animated.Value(0)).current;
   const scanLocked = useRef(false);
+  
   const [currentLocation, setCurrentLocation] = useState(null);
   const [locationMessage, setLocationMessage] = useState('Buscando sua localização…');
   const [isLoadingLocation, setIsLoadingLocation] = useState(true);
@@ -42,6 +48,12 @@ export default function PointValidationScreen({ navigation, route }) {
   const [recordedAt, setRecordedAt] = useState(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const { height: windowHeight } = useWindowDimensions();
+
+  // Estados da Primeira Página (Setup)
+  const [selectedSetupCoords, setSelectedSetupCoords] = useState(null);
+  const [radiusInput, setRadiusInput] = useState('300');
+  const [isLocatingSetup, setIsLocatingSetup] = useState(false);
+  const [isSavingLocation, setIsSavingLocation] = useState(false);
 
   useEffect(() => {
     Animated.parallel([
@@ -70,6 +82,13 @@ export default function PointValidationScreen({ navigation, route }) {
     loadLocation();
   }, []);
 
+  // Preenche a localização inicial no mapa de Setup
+  useEffect(() => {
+    if (!hasWorkplaceLocation && currentLocation && !selectedSetupCoords) {
+      setSelectedSetupCoords(currentLocation);
+    }
+  }, [currentLocation, hasWorkplaceLocation, selectedSetupCoords]);
+
   useEffect(() => {
     const animation = Animated.loop(
       Animated.sequence([
@@ -95,13 +114,21 @@ export default function PointValidationScreen({ navigation, route }) {
     });
   };
 
-  const distance = useMemo(() => currentLocation ? Math.round(distanceInMeters(currentLocation, WORKPLACE)) : null, [currentLocation]);
-  const isAllowed = distance !== null && distance <= WORKPLACE.allowedRadius;
-  const mapRegion = currentLocation ? { ...currentLocation, latitudeDelta: 0.006, longitudeDelta: 0.006 } : { latitude: WORKPLACE.latitude, longitude: WORKPLACE.longitude, latitudeDelta: 0.012, longitudeDelta: 0.012 };
+  const distance = useMemo(
+    () => (currentLocation && workplace) ? Math.round(distanceInMeters(currentLocation, workplace)) : null,
+    [currentLocation, workplace]
+  );
+  const isAllowed = distance !== null && distance <= (workplace?.allowedRadius || 0);
+  const mapRegion = currentLocation
+    ? { ...currentLocation, latitudeDelta: 0.006, longitudeDelta: 0.006 }
+    : workplace
+      ? { latitude: workplace.latitude, longitude: workplace.longitude, latitudeDelta: 0.012, longitudeDelta: 0.012 }
+      : { ...FALLBACK_REGION, latitudeDelta: 0.05, longitudeDelta: 0.05 };
 
   useEffect(() => {
+    if (!hasWorkplaceLocation) return;
     if (distance !== null) setLocationMessage(isAllowed ? 'Local permitido' : 'Você está fora do raio permitido.');
-  }, [distance, isAllowed]);
+  }, [distance, isAllowed, hasWorkplaceLocation]);
 
   const confirmIdentity = async () => {
     const hasHardware = await LocalAuthentication.hasHardwareAsync();
@@ -167,25 +194,145 @@ export default function PointValidationScreen({ navigation, route }) {
     setStep('success');
   };
 
+  // Funções da Primeira Página (Setup)
+  const useSetupCurrentLocation = async () => {
+    setIsLocatingSetup(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Erro', 'Permita o acesso à localização para usar essa opção.');
+        return;
+      }
+      const { coords } = await Location.getCurrentPositionAsync({});
+      setSelectedSetupCoords({ latitude: coords.latitude, longitude: coords.longitude });
+    } catch {
+      Alert.alert('Erro', 'Não foi possível obter sua localização.');
+    } finally {
+      setIsLocatingSetup(false);
+    }
+  };
+
+  const handleSaveSetupLocation = async () => {
+    if (!selectedSetupCoords) {
+      Alert.alert('Erro', 'Toque no mapa para marcar o local.');
+      return;
+    }
+    const radiusValue = Number(radiusInput);
+    if (!Number.isFinite(radiusValue) || radiusValue <= 0) {
+      Alert.alert('Erro', 'Informe um raio válido em metros.');
+      return;
+    }
+    setIsSavingLocation(true);
+    try {
+      await updateWorkplaceLocation(selectedSetupCoords.latitude, selectedSetupCoords.longitude, radiusValue);
+    } catch (err) {
+      Alert.alert('Erro', err.message);
+    } finally {
+      setIsSavingLocation(false);
+    }
+  };
+
+  const setupMapRegion = selectedSetupCoords
+    ? { ...selectedSetupCoords, latitudeDelta: 0.01, longitudeDelta: 0.01 }
+    : currentLocation
+      ? { ...currentLocation, latitudeDelta: 0.01, longitudeDelta: 0.01 }
+      : { ...FALLBACK_REGION, latitudeDelta: 0.05, longitudeDelta: 0.05 };
+  const setupRadiusValue = Number(radiusInput) || 0;
+
+  // Render da Primeira Página (Setup)
+  const renderSetup = () => (
+    <>
+      <View style={styles.mapCard}>
+        {Platform.OS === 'web' ? <Text style={styles.mapFallback}>Mapa disponível no aplicativo móvel</Text> : (
+          <MapView
+            style={styles.map}
+            region={setupMapRegion}
+            onPress={(e) => setSelectedSetupCoords(e.nativeEvent.coordinate)}
+          >
+            {selectedSetupCoords && (
+              <>
+                <Marker
+                  coordinate={selectedSetupCoords}
+                  draggable
+                  onDragEnd={(e) => setSelectedSetupCoords(e.nativeEvent.coordinate)}
+                  pinColor="#1C1B18"
+                />
+                {setupRadiusValue > 0 && (
+                  <Circle center={selectedSetupCoords} radius={setupRadiusValue} fillColor="rgba(28,27,24,.10)" strokeColor="rgba(28,27,24,.35)" />
+                )}
+              </>
+            )}
+          </MapView>
+        )}
+        <View pointerEvents="none" style={styles.mapLegend}>
+          <View style={styles.legendItem}>
+            <View style={styles.workplaceDot} />
+            <Text style={styles.legendText}>{selectedSetupCoords ? 'Local selecionado' : 'Toque no mapa'}</Text>
+          </View>
+        </View>
+      </View>
+      <View style={styles.timeRow}>
+        <Text style={styles.currentTime}>{selectedSetupCoords ? '📍' : '—'}</Text>
+        <View style={styles.statusBadge}>
+          <Ionicons name={selectedSetupCoords ? 'checkmark' : 'information'} size={17} color={colors.background} />
+          <Text style={styles.statusText}>{selectedSetupCoords ? 'Toque e arraste para ajustar' : 'Toque no mapa para marcar o local'}</Text>
+        </View>
+      </View>
+      <View style={styles.locationDetails}>
+        <View style={styles.detailItem}>
+          <Ionicons name="business-outline" size={18} color={colors.primary} />
+          <Text style={styles.detailLabel}>LOCAL</Text>
+          <Text style={styles.detailValue}>{workplaceName}</Text>
+        </View>
+        <View style={styles.detailSeparator} />
+        <Pressable style={styles.detailItem} onPress={useSetupCurrentLocation} disabled={isLocatingSetup}>
+          <Ionicons name="locate-outline" size={18} color={colors.primary} />
+          <Text style={styles.detailLabel}>ATUAL</Text>
+          {isLocatingSetup ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.detailValue}>Usar</Text>}
+        </Pressable>
+        <View style={styles.detailSeparator} />
+        <View style={styles.detailItem}>
+          <Ionicons name="radio-outline" size={18} color={colors.primary} />
+          <Text style={styles.detailLabel}>RAIO (M)</Text>
+          <TextInput
+            style={styles.radiusInlineInput}
+            value={radiusInput}
+            onChangeText={setRadiusInput}
+            keyboardType="numeric"
+            placeholder="300"
+          />
+        </View>
+      </View>
+      <Pressable
+        disabled={!selectedSetupCoords || isSavingLocation}
+        style={[styles.primaryButton, styles.locationPrimaryButton, (!selectedSetupCoords || isSavingLocation) && styles.buttonDisabled]}
+        onPress={handleSaveSetupLocation}
+      >
+        {isSavingLocation ? <ActivityIndicator color={colors.background} /> : <Text style={styles.primaryButtonText}>Salvar local de trabalho</Text>}
+      </Pressable>
+    </>
+  );
+
+  // Render da Segunda Página (mantido exatamente do seu código)
   const renderLocation = () => (
     <>
       <View style={styles.mapCard}>
-        {Platform.OS === 'web' ? <Text style={styles.mapFallback}>Mapa disponível no aplicativo móvel</Text> : <MapView style={styles.map} region={mapRegion} scrollEnabled={false} rotateEnabled={false}><Marker coordinate={WORKPLACE} title={WORKPLACE.name} pinColor="#1C1B18" />{currentLocation && <Marker coordinate={currentLocation} title="Você está aqui" pinColor="#5E7A68" />}<Circle center={WORKPLACE} radius={WORKPLACE.allowedRadius} fillColor="rgba(28,27,24,.10)" strokeColor="rgba(28,27,24,.35)" /></MapView>}
+        {Platform.OS === 'web' ? <Text style={styles.mapFallback}>Mapa disponível no aplicativo móvel</Text> : <MapView style={styles.map} region={mapRegion} scrollEnabled={false} rotateEnabled={false}><Marker coordinate={workplace} title={workplace.name} pinColor="#1C1B18" />{currentLocation && <Marker coordinate={currentLocation} title="Você está aqui" pinColor="#5E7A68" />}<Circle center={workplace} radius={workplace.allowedRadius} fillColor="rgba(28,27,24,.10)" strokeColor="rgba(28,27,24,.35)" /></MapView>}
         <View pointerEvents="none" style={styles.mapLegend}>
-          <View style={styles.legendItem}><View style={styles.workplaceDot} /><Text style={styles.legendText}>{WORKPLACE.name}</Text></View>
+          <View style={styles.legendItem}><View style={styles.workplaceDot} /><Text style={styles.legendText}>{workplace.name}</Text></View>
           <View style={styles.legendItem}><View style={styles.currentLocationDot} /><Text style={styles.legendText}>Você está aqui</Text></View>
         </View>
       </View>
       <View style={styles.timeRow}><Text style={styles.currentTime}>{new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</Text><View style={[styles.statusBadge, !isAllowed && !isLoadingLocation && styles.statusBadgeDenied]}><Ionicons name={isAllowed ? 'checkmark' : 'information'} size={17} color={colors.background} /><Text style={[styles.statusText, !isAllowed && !isLoadingLocation && styles.statusTextDenied]}>{locationMessage}</Text></View></View>
       <View style={styles.locationDetails}>
-        <View style={styles.detailItem}><Ionicons name="business-outline" size={18} color={colors.primary} /><Text style={styles.detailLabel}>LOCAL</Text><Text style={styles.detailValue}>{WORKPLACE.name}</Text></View>
+        <View style={styles.detailItem}><Ionicons name="business-outline" size={18} color={colors.primary} /><Text style={styles.detailLabel}>LOCAL</Text><Text style={styles.detailValue}>{workplace.name}</Text></View>
         <View style={styles.detailSeparator} />
         <View style={styles.detailItem}><Ionicons name="navigate-outline" size={18} color={colors.primary} /><Text style={styles.detailLabel}>DISTÂNCIA</Text>{isLoadingLocation ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.detailValue}>{distance !== null ? `${distance} m` : 'Indisponível'}</Text>}</View>
         <View style={styles.detailSeparator} />
-        <View style={styles.detailItem}><Ionicons name="radio-outline" size={18} color={colors.primary} /><Text style={styles.detailLabel}>RAIO</Text><Text style={styles.detailValue}>{WORKPLACE.allowedRadius} m</Text></View>
-        <View style={styles.detailRow}><Ionicons name="business-outline" size={18} color={colors.primary} /><View><Text style={styles.detailLabel}>LOCAL DE TRABALHO</Text><Text style={styles.detailValue}>{WORKPLACE.name}</Text></View></View>
+        <View style={styles.detailItem}><Ionicons name="radio-outline" size={18} color={colors.primary} /><Text style={styles.detailLabel}>RAIO</Text><Text style={styles.detailValue}>{workplace.allowedRadius} m</Text></View>
+        <View style={styles.detailRow}><Ionicons name="business-outline" size={18} color={colors.primary} /><View><Text style={styles.detailLabel}>LOCAL DE TRABALHO</Text><Text style={styles.detailValue}>{workplace.name}</Text></View></View>
         <View style={styles.detailRow}><Ionicons name="navigate-outline" size={18} color={colors.primary} /><View><Text style={styles.detailLabel}>DISTÂNCIA ATUAL</Text>{isLoadingLocation ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.detailValue}>{distance !== null ? `${distance} m do local` : 'Localização indisponível'}</Text>}</View></View>
-        <View style={styles.detailRow}><Ionicons name="radio-outline" size={18} color={colors.primary} /><View><Text style={styles.detailLabel}>RAIO PERMITIDO</Text><Text style={styles.detailValue}>Até {WORKPLACE.allowedRadius} m</Text></View></View>
+        <View style={styles.detailRow}><Ionicons name="radio-outline" size={18} color={colors.primary} /><View><Text style={styles.detailLabel}>RAIO PERMITIDO</Text><Text style={styles.detailValue}>Até {workplace.allowedRadius} m</Text></View></View>
       </View>
       <Pressable disabled={!isAllowed} style={[styles.primaryButton, styles.locationPrimaryButton, !isAllowed && styles.buttonDisabled]} onPress={() => transitionTo('identity')}><Text style={styles.primaryButtonText}>Confirmar localização</Text></Pressable>
     </>
@@ -219,7 +366,7 @@ export default function PointValidationScreen({ navigation, route }) {
       <Text style={styles.successTitle}>Ponto registrado.</Text>
       <Text style={styles.recordTime}>{recordedAt?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</Text>
       <Text style={styles.recordDate}>{recordedAt?.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</Text>
-      <Text style={styles.successWorkplace}>{WORKPLACE.name}</Text>
+      <Text style={styles.successWorkplace}>{workplace.name}</Text>
       <Text style={styles.confirmation}>✓ Local confirmado</Text>
       <Text style={styles.confirmation}>✓ Identidade confirmada</Text>
       <Text style={styles.confirmation}>✓ QR Code confirmado</Text>
@@ -227,6 +374,38 @@ export default function PointValidationScreen({ navigation, route }) {
     </View>
   );
 
+  // Se não tem local salvo, exibe a Primeira Página (Setup)
+  if (!hasWorkplaceLocation) {
+    return (
+      <SafeAreaView style={styles.root} edges={['top']}>
+        <StatusBar style="light" />
+        <View style={styles.header}>
+          <View style={styles.headerRow}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Voltar" onPress={() => navigation.goBack()}>
+              <Animated.View style={{ transform: [{ translateX: backArrowOffset }] }}>
+                <Ionicons name="chevron-back" size={27} color={colors.background} />
+              </Animated.View>
+            </Pressable>
+            <Text style={styles.brand}>Timen.</Text>
+            <View style={styles.headerSpacer} />
+          </View>
+          <Text style={styles.headerTitle}>Onde fica seu trabalho?</Text>
+        </View>
+        <ScrollView
+          style={styles.sheet}
+          contentContainerStyle={[styles.content, styles.locationContent]}
+          scrollEnabled={false}
+          showsVerticalScrollIndicator={false}
+        >
+          <Animated.View style={[styles.stepContent, { opacity: stepOpacity, transform: [{ scale: stepScale }] }]}>
+            {renderSetup()}
+          </Animated.View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // Se já tem local, exibe a Segunda Página normalmente
   return (
     <SafeAreaView style={[styles.root, step === 'identity' && styles.identityRoot, identityFullscreen && styles.identityFullscreenRoot]} edges={['top']}>
       <StatusBar style={step === 'identity' && !identityFullscreen ? 'dark' : 'light'} />

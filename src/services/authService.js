@@ -13,13 +13,14 @@ function isValidEmail(email) {
 }
 
 export const authService = {
-  async register(firstName, lastName, email, password) {
+  async register(firstName, lastName, email, password, workplace) {
     const normalizedFirstName = firstName.trim();
     const normalizedLastName = lastName.trim();
     const normalizedEmail = email.trim().toLowerCase();
+    const normalizedWorkplace = workplace.trim();
 
-    if (!normalizedFirstName || !normalizedLastName || !normalizedEmail || !password) {
-      throw new Error('Preencha nome, sobrenome, e-mail e senha.');
+    if (!normalizedFirstName || !normalizedLastName || !normalizedEmail || !password || !normalizedWorkplace) {
+      throw new Error('Preencha nome, sobrenome, local de trabalho, e-mail e senha.');
     }
     if (!isValidEmail(normalizedEmail)) {
       throw new Error('Insira um e-mail válido.');
@@ -45,6 +46,8 @@ export const authService = {
         firstName: normalizedFirstName,
         lastName: normalizedLastName,
         email: normalizedEmail,
+        workplace: normalizedWorkplace,
+        workplaceLocation: null,
         passwordHash,
       })
     );
@@ -75,6 +78,8 @@ export const authService = {
       firstName: credentials.firstName,
       lastName: credentials.lastName,
       email: credentials.email,
+      workplace: credentials.workplace || 'Local de trabalho',
+      workplaceLocation: credentials.workplaceLocation || null,
       photo: credentials.photo || null,
     };
     await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
@@ -124,6 +129,47 @@ export const authService = {
     const session = await this.getSession();
     if (session) {
       session.email = credentials.email;
+      await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
+      return session;
+    }
+  },
+
+  async updateWorkplace(workplace) {
+    const normalizedWorkplace = workplace.trim();
+    if (!normalizedWorkplace) throw new Error('Local de trabalho é obrigatório.');
+
+    const stored = await AsyncStorage.getItem(STORAGE_KEYS.CREDENTIALS);
+    if (!stored) throw new Error('Credenciais não encontradas.');
+    const credentials = JSON.parse(stored);
+    credentials.workplace = normalizedWorkplace;
+    await AsyncStorage.setItem(STORAGE_KEYS.CREDENTIALS, JSON.stringify(credentials));
+
+    const session = await this.getSession();
+    if (session) {
+      session.workplace = normalizedWorkplace;
+      await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
+      return session;
+    }
+  },
+
+  async updateWorkplaceLocation(latitude, longitude, allowedRadius) {
+    if (typeof latitude !== 'number' || typeof longitude !== 'number' || Number.isNaN(latitude) || Number.isNaN(longitude)) {
+      throw new Error('Selecione um ponto válido no mapa.');
+    }
+    const normalizedRadius = Number(allowedRadius);
+    if (!Number.isFinite(normalizedRadius) || normalizedRadius <= 0) {
+      throw new Error('Informe um raio válido em metros.');
+    }
+
+    const stored = await AsyncStorage.getItem(STORAGE_KEYS.CREDENTIALS);
+    if (!stored) throw new Error('Credenciais não encontradas.');
+    const credentials = JSON.parse(stored);
+    credentials.workplaceLocation = { latitude, longitude, allowedRadius: normalizedRadius };
+    await AsyncStorage.setItem(STORAGE_KEYS.CREDENTIALS, JSON.stringify(credentials));
+
+    const session = await this.getSession();
+    if (session) {
+      session.workplaceLocation = credentials.workplaceLocation;
       await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
       return session;
     }

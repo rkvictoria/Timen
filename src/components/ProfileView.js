@@ -6,12 +6,13 @@ import { useAuth } from '../hooks/useAuth';
 import { colors } from '../styles/colors';
 
 export default function ProfileView() {
-  const { user, logout, updateProfile, updateEmail, updatePassword, updatePhoto } = useAuth();
+  const { user, logout, updateProfile, updateEmail, updateWorkplace, updatePassword, updatePhoto } = useAuth();
 
-  const [modalVisible, setModalVisible] = useState(null); // 'name', 'email', 'password'
+  const [modalVisible, setModalVisible] = useState(null); // 'name', 'email', 'workplace', 'password'
   const [firstName, setFirstName] = useState(user?.firstName || '');
   const [lastName, setLastName] = useState(user?.lastName || '');
   const [email, setEmail] = useState(user?.email || '');
+  const [workplace, setWorkplace] = useState(user?.workplace || '');
   const [currentPassword, setCurrentPassword] = useState('');
   const [newPassword, setNewPassword] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -65,6 +66,22 @@ export default function ProfileView() {
     }
   };
 
+  const handleSaveWorkplace = async () => {
+    if (!workplace.trim()) {
+      Alert.alert('Erro', 'Local de trabalho é obrigatório.');
+      return;
+    }
+    setIsLoading(true);
+    try {
+      await updateWorkplace(workplace);
+      setModalVisible(null);
+    } catch (err) {
+      Alert.alert('Erro', err.message);
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
   const handleSavePassword = async () => {
     if (!currentPassword || !newPassword) {
       Alert.alert('Erro', 'Preencha ambas as senhas.');
@@ -88,12 +105,17 @@ export default function ProfileView() {
     <View style={styles.container}>
       <View style={styles.scrollView}>
         <View style={styles.header}>
-          <Text style={styles.headerTitle}>Perfil</Text>
+          <View style={styles.headerTopRow}>
+            <Text style={styles.headerTitle}>Perfil</Text>
+            <Pressable onPress={logout} hitSlop={8}>
+              <Ionicons name="log-out-outline" size={22} color={colors.background} />
+            </Pressable>
+          </View>
           <View style={styles.headerInfo}>
-            <View>
-              <Text style={styles.userName}>{user?.firstName} {user?.lastName}</Text>
-              <Text style={styles.userEmail}>{user?.email}</Text>
-            </View>
+            <Text style={styles.userName}>{user?.firstName}</Text>
+            <Text style={styles.userLastName}>{user?.lastName}</Text>
+            <Text style={styles.userEmail}>{user?.email}</Text>
+            <Text style={styles.companyName}>{user?.workplace || 'Local de trabalho'}</Text>
           </View>
         </View>
 
@@ -111,41 +133,43 @@ export default function ProfileView() {
         </View>
 
         <View style={styles.body}>
-          <Text style={styles.sectionTitle}>Opções da Conta</Text>
+          <View style={styles.sectionHeading}>
+            <Text style={styles.sectionTitle}>Atividades</Text>
+          </View>
 
           <View style={styles.combinedCardContainer}>
-            <Pressable 
-              style={styles.combinedCardLeft} 
+            <Pressable
+              style={styles.combinedCardLeft}
               onPress={() => setModalVisible('name')}
             >
-              <Ionicons name="person-outline" size={24} color={colors.text} style={{ marginBottom: 4 }} />
-              <Text style={styles.combinedCardLeftText}>Dados Pessoais</Text>
+              <Ionicons name="person-outline" size={22} color={colors.text} style={{ marginBottom: 4 }} />
+              <Text style={styles.combinedCardLeftText} numberOfLines={1}>Dados Pessoais</Text>
             </Pressable>
 
-            <Pressable 
-              style={styles.combinedCardRight} 
+            <Pressable
+              style={styles.combinedCardMiddle}
               onPress={() => setModalVisible('password')}
             >
-              <Ionicons name="lock-closed-outline" size={24} color={colors.background} style={{ marginRight: 8 }} />
-              <Text style={styles.combinedCardRightText}>Segurança</Text>
+              <Ionicons name="lock-closed-outline" size={22} color={colors.background} style={{ marginBottom: 4 }} />
+              <Text style={styles.combinedCardMiddleText}>Segurança</Text>
+              <Text style={styles.combinedCardMiddleHint}>Senha e acesso</Text>
+            </Pressable>
+
+            <Pressable
+              style={styles.combinedCardEmail}
+              onPress={() => setModalVisible('email')}
+            >
+              <Ionicons name="mail-outline" size={22} color={colors.text} style={{ marginBottom: 4 }} />
+              <Text style={styles.combinedCardEmailText}>E-mail</Text>
             </Pressable>
           </View>
 
-          {/* Email Card */}
-          <Pressable style={styles.fullCard} onPress={() => setModalVisible('email')}>
+          <Pressable style={styles.fullCard} onPress={() => setModalVisible('workplace')}>
             <View style={styles.fullCardIcon}>
-              <Ionicons name="mail-outline" size={24} color={colors.background} />
+              <Ionicons name="business-outline" size={24} color={colors.background} />
             </View>
-            <Text style={styles.fullCardTitle}>Endereço de E-mail</Text>
-            <Ionicons name="chevron-forward" size={20} color={colors.background} />
-          </Pressable>
-
-          {/* Logout Card */}
-          <Pressable style={styles.fullCardRed} onPress={logout}>
-            <View style={styles.fullCardIconRed}>
-              <Ionicons name="log-out-outline" size={24} color="#FF4B4B" />
-            </View>
-            <Text style={styles.fullCardTitleRed}>Sair da Conta</Text>
+            <Text style={styles.fullCardTitle}>Local de trabalho</Text>
+            <Ionicons name="arrow-up-right" size={20} color={colors.background} />
           </Pressable>
 
         </View>
@@ -175,6 +199,19 @@ export default function ProfileView() {
             <View style={styles.modalButtons}>
               <Pressable style={styles.modalButtonCancel} onPress={() => setModalVisible(null)}><Text style={styles.modalButtonTextDark}>Cancelar</Text></Pressable>
               <Pressable style={styles.modalButtonSave} onPress={handleSaveEmail}>{isLoading ? <ActivityIndicator color={colors.background} /> : <Text style={styles.modalButtonText}>Salvar</Text>}</Pressable>
+            </View>
+          </View>
+        </View>
+      </Modal>
+
+      <Modal visible={modalVisible === 'workplace'} animationType="slide" transparent>
+        <View style={styles.modalOverlay}>
+          <View style={styles.modalContent}>
+            <Text style={styles.modalTitle}>Local de trabalho</Text>
+            <TextInput style={styles.input} value={workplace} onChangeText={setWorkplace} placeholder="Nome do local de trabalho" />
+            <View style={styles.modalButtons}>
+              <Pressable style={styles.modalButtonCancel} onPress={() => setModalVisible(null)}><Text style={styles.modalButtonTextDark}>Cancelar</Text></Pressable>
+              <Pressable style={styles.modalButtonSave} onPress={handleSaveWorkplace}>{isLoading ? <ActivityIndicator color={colors.background} /> : <Text style={styles.modalButtonText}>Salvar</Text>}</Pressable>
             </View>
           </View>
         </View>
@@ -211,42 +248,65 @@ const styles = StyleSheet.create({
   },
   header: {
     backgroundColor: colors.primary,
-    height: 240,
-    borderBottomRightRadius: 60,
+    height: 290,
+    borderBottomRightRadius: 68,
     paddingHorizontal: 24,
-    paddingTop: 60,
+    paddingTop: 48,
+  },
+  headerTopRow: {
+    alignItems: 'center',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
   },
   headerTitle: {
     color: colors.background,
-    fontSize: 22,
-    fontWeight: '600',
+    fontSize: 30,
+    fontWeight: '700',
   },
   headerInfo: {
-    marginTop: 40,
-    alignItems: 'flex-end',
+    alignItems: 'flex-start',
+    position: 'absolute',
+    right: 24,
+    top: 142,
+    width: 168,
   },
   userName: {
     color: colors.background,
     fontSize: 18,
     fontWeight: '700',
-    textAlign: 'right',
+    textAlign: 'left',
   },
   userEmail: {
     color: '#D8D2C9',
-    fontSize: 14,
+    fontSize: 13,
     marginTop: 4,
-    textAlign: 'right',
+    textAlign: 'left',
+  },
+  userLastName: {
+    color: colors.background,
+    fontSize: 18,
+    fontWeight: '700',
+    lineHeight: 21,
+    textAlign: 'left',
+  },
+  companyName: {
+    color: '#D6A85F',
+    fontSize: 12,
+    fontWeight: '700',
+    letterSpacing: 1.1,
+    marginTop: 6,
+    textTransform: 'uppercase',
   },
   photoContainerWrapper: {
-    marginTop: -80,
+    marginTop: -154,
     marginLeft: 30,
     zIndex: 10,
   },
   photoContainer: {
-    width: 120,
-    height: 120,
+    width: 132,
+    height: 174,
     backgroundColor: '#EAE5DE',
-    borderRadius: 36,
+    borderRadius: 24,
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
@@ -259,16 +319,16 @@ const styles = StyleSheet.create({
   photo: {
     width: '100%',
     height: '100%',
-    borderRadius: 36,
+    borderRadius: 24,
   },
   editBadge: {
     position: 'absolute',
-    bottom: 8,
-    right: 8,
+    bottom: 10,
+    right: 10,
     backgroundColor: colors.primary,
-    width: 28,
-    height: 28,
-    borderRadius: 14,
+    width: 34,
+    height: 34,
+    borderRadius: 17,
     justifyContent: 'center',
     alignItems: 'center',
     borderWidth: 2,
@@ -276,19 +336,29 @@ const styles = StyleSheet.create({
   },
   body: {
     paddingHorizontal: 24,
-    paddingTop: 40,
+    paddingTop: 30,
+  },
+  sectionHeading: {
+    alignItems: 'flex-end',
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginBottom: 16,
   },
   sectionTitle: {
-    fontSize: 18,
+    fontSize: 20,
     fontWeight: '700',
     color: colors.text,
-    marginBottom: 20,
+    marginBottom: 0,
+  },
+  sectionHint: {
+    color: colors.disabled,
+    fontSize: 11,
   },
   combinedCardContainer: {
     flexDirection: 'row',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 24,
-    height: 100,
+    backgroundColor: colors.background,
+    borderRadius: 26,
+    height: 108,
     marginBottom: 16,
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 4 },
@@ -298,32 +368,56 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   combinedCardLeft: {
-    flex: 0.45,
+    flex: 1,
+    backgroundColor: '#FFFFFF',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 4,
   },
   combinedCardLeftText: {
-    fontSize: 14,
+    fontSize: 11,
     fontWeight: '700',
     color: colors.text,
+    letterSpacing: -0.2,
+    textAlign: 'center',
   },
-  combinedCardRight: {
-    flex: 0.55,
+  combinedCardMiddle: {
+    flex: 1,
     backgroundColor: colors.primary,
-    borderTopLeftRadius: 44,
-    flexDirection: 'row',
     justifyContent: 'center',
     alignItems: 'center',
+    paddingHorizontal: 4,
   },
-  combinedCardRightText: {
-    fontSize: 14,
+  combinedCardMiddleText: {
+    fontSize: 12,
     fontWeight: '700',
     color: colors.background,
+    textAlign: 'center',
+  },
+  combinedCardMiddleHint: {
+    color: '#C7C0B7',
+    fontSize: 9,
+    marginTop: 3,
+    textAlign: 'center',
+  },
+  combinedCardEmail: {
+    flex: 1,
+    backgroundColor: '#D6A85F',
+    justifyContent: 'center',
+    alignItems: 'center',
+    paddingHorizontal: 4,
+  },
+  combinedCardEmailText: {
+    fontSize: 12,
+    fontWeight: '700',
+    color: colors.text,
+    textAlign: 'center',
   },
   fullCard: {
     backgroundColor: colors.primary,
-    borderRadius: 24,
-    padding: 20,
+    borderRadius: 20,
+    paddingHorizontal: 18,
+    paddingVertical: 17,
     flexDirection: 'row',
     alignItems: 'center',
     marginBottom: 16,
@@ -333,27 +427,9 @@ const styles = StyleSheet.create({
   },
   fullCardTitle: {
     flex: 1,
-    fontSize: 16,
+    fontSize: 14,
     fontWeight: '600',
     color: colors.background,
-  },
-  fullCardRed: {
-    backgroundColor: '#FFF0F0',
-    borderRadius: 24,
-    padding: 20,
-    flexDirection: 'row',
-    alignItems: 'center',
-    borderWidth: 1,
-    borderColor: '#FFE0E0',
-  },
-  fullCardIconRed: {
-    marginRight: 16,
-  },
-  fullCardTitleRed: {
-    flex: 1,
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FF4B4B',
   },
   modalOverlay: {
     flex: 1,
@@ -422,4 +498,3 @@ const styles = StyleSheet.create({
     fontWeight: '600',
   },
 });
-
