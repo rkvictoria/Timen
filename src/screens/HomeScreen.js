@@ -1,29 +1,29 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, PanResponder, Platform, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import * as Location from 'expo-location';
-import MapView, { Circle, Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../hooks/useAuth';
 import { colors } from '../styles/colors';
+import ProfileView from '../components/ProfileView';
+import { getNextPointType, getTodayPoints } from '../services/pointService';
 
-const fallbackRegion = { latitude: -15.793889, longitude: -47.882778, latitudeDelta: 0.012, longitudeDelta: 0.012 };
-const records = [['Entrada', '08:00'], ['Início do intervalo', '12:03'], ['Fim do intervalo', '13:01']];
 const tabs = ['home', 'history', 'register', 'profile'];
+const pointLabels = { entry: 'Entrada', break: 'Início do intervalo', return: 'Retorno', exit: 'Saída' };
+const nextPointLabels = { entry: 'Registrar entrada', break: 'Iniciar intervalo', return: 'Registrar retorno', exit: 'Registrar saída' };
 
 function greeting() {
   const hour = new Date().getHours();
   return hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
 }
 
-export default function HomeScreen() {
+export default function HomeScreen({ navigation }) {
   const { user, logout } = useAuth();
-  const [region, setRegion] = useState(fallbackRegion);
-  const [locationText, setLocationText] = useState('Buscando sua localização…');
-  const [isLocating, setIsLocating] = useState(true);
+  const [points, setPoints] = useState({});
   const [activeTab, setActiveTab] = useState('home');
   const tabPosition = useRef(new Animated.Value(0)).current;
+  const contentOpacity = useRef(new Animated.Value(1)).current;
+  const contentScale = useRef(new Animated.Value(1)).current;
   const dragStartPosition = useRef(0);
   const activeTabRef = useRef('home');
   const { width } = useWindowDimensions();
@@ -37,27 +37,33 @@ export default function HomeScreen() {
       .replace(/^./, (letter) => letter.toUpperCase());
   }, [user?.email, user?.firstName]);
 
-  useEffect(() => {
-    async function getLocation() {
-      const { status } = await Location.requestForegroundPermissionsAsync();
-      if (status !== 'granted') {
-        setLocationText('Permita a localização para validar o ponto.');
-        setIsLocating(false);
-        return;
-      }
-      try {
-        const { coords } = await Location.getCurrentPositionAsync({});
-        setRegion({ latitude: coords.latitude, longitude: coords.longitude, latitudeDelta: 0.006, longitudeDelta: 0.006 });
-        setLocationText('Localização atual confirmada');
-      } catch {
-        setLocationText('Não foi possível obter sua localização agora.');
-      } finally {
-        setIsLocating(false);
-      }
+  const refreshPoints = async () => {
+    try {
+      setPoints(await getTodayPoints());
+    } catch {
+      setPoints({});
     }
-    getLocation();
+  };
+
+  useEffect(() => {
+    refreshPoints();
   }, []);
 
+  useEffect(() => navigation.addListener('focus', () => {
+    refreshPoints();
+    if (activeTabRef.current !== 'register') return;
+
+    activeTabRef.current = 'home';
+    setActiveTab('home');
+    contentOpacity.setValue(1);
+    contentScale.setValue(1);
+    Animated.spring(tabPosition, {
+      toValue: 0,
+      friction: 9,
+      tension: 90,
+      useNativeDriver: true,
+    }).start();
+  }), [contentOpacity, contentScale, navigation, tabPosition]);
   const getIconAnimation = (index) => ({
     transform: [
       {
@@ -70,21 +76,57 @@ export default function HomeScreen() {
     ],
   });
 
-  const selectTab = (index, openRegister = false) => {
+  const animateContentTo = (nextTab) => {
+    Animated.parallel([
+      Animated.timing(contentOpacity, { toValue: 0, duration: 150, useNativeDriver: true }),
+      Animated.timing(contentScale, { toValue: 0.94, duration: 150, useNativeDriver: true }),
+    ]).start(() => {
+      setActiveTab(nextTab);
+      contentScale.setValue(0.9);
+      Animated.parallel([
+        Animated.timing(contentOpacity, { toValue: 1, duration: 230, useNativeDriver: true }),
+        Animated.spring(contentScale, { toValue: 1, friction: 8, tension: 85, useNativeDriver: true }),
+      ]).start();
+    });
+  };
+
+  const nextPointType = getNextPointType(points);
+  const goToPointValidation = () => {
+    if (nextPointType) navigation.navigate('PointValidation', { pointType: nextPointType });
+  };
+  const pointRows = Object.keys(pointLabels).map((type) => ({
+    type,
+    label: pointLabels[type],
+    time: points[type] ? new Date(points[type]).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—',
+  }));
+  const recordedCount = Object.keys(points).length;
+  const journeyFinished = !nextPointType;
+  const journeyTitle = journeyFinished ? 'Finalizado' : 'Em andamento';
+  const activeDuration = points.entry ? Math.max(0, (new Date(points.exit || Date.now()).getTime() - new Date(points.entry).getTime()) - (points.break && points.return ? new Date(points.return).getTime() - new Date(points.break).getTime() : 0)) : 0;
+  const workedHours = `${String(Math.floor(activeDuration / 3600000)).padStart(2, '0')}h ${String(Math.floor((activeDuration % 3600000) / 60000)).padStart(2, '0')}m`;
+
+  const selectTab = (index) => {
     const tab = tabs[index];
+
+    if (tab === activeTabRef.current) return;
+
+    if (tab === 'register') {
+      if (!nextPointType) return;
+      activeTabRef.current = tab;
+      setActiveTab(tab);
+      goToPointValidation();
+    } else {
+      animateContentTo(tab);
+    }
     activeTabRef.current = tab;
-    setActiveTab(tab);
     Animated.spring(tabPosition, {
       toValue: index * tabWidth,
       friction: 9,
       tension: 90,
       useNativeDriver: true,
     }).start();
-
-    if (tab === 'register' && openRegister) {
-      Alert.alert('Validação de ponto', 'A próxima tela confirmará biometria, lerá o QR Code e validará a localização.');
-    }
   };
+
 
   const panResponder = useRef(
     PanResponder.create({
@@ -115,42 +157,58 @@ export default function HomeScreen() {
   return (
     <SafeAreaView style={styles.root} edges={['top']}>
       <StatusBar style="light" />
-      <View style={styles.darkHeader}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Sair da conta"
-          onPress={logout}
-          style={({ pressed }) => [styles.logoutButton, pressed && styles.logoutButtonPressed]}
-        >
-          <Text style={styles.logoutText}>Sair</Text>
-        </Pressable>
-      </View>
-      <ScrollView style={styles.sheet} contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <View style={styles.greetingBlock}>
-          <Text style={styles.greeting}>{greeting()},</Text>
-          <Text style={styles.name}>{firstName}.</Text>
-          <Text style={styles.date}>{new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }).format(new Date())}</Text>
-        </View>
+      <Animated.View style={[styles.tabContent, { opacity: contentOpacity, transform: [{ scale: contentScale }] }]}>
+        {activeTab === 'profile' ? (
+          <ProfileView />
+        ) : (
+          <>
+            <View style={styles.darkHeader}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Sair da conta"
+                onPress={logout}
+                style={({ pressed }) => [styles.logoutButton, pressed && styles.logoutButtonPressed]}
+              >
+                <Text style={styles.logoutText}>Sair</Text>
+              </Pressable>
+            </View>
+            <View style={styles.sheet}>
+              <View style={styles.content}>
+            <View style={styles.greetingBlock}>
+              <Text style={styles.greeting}>{greeting()},</Text>
+              <Text style={styles.name}>{firstName}.</Text>
+              <Text style={styles.date}>{new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }).format(new Date())}</Text>
+            </View>
 
-        <View style={styles.journeyCard}>
-          <View><Text style={styles.eyebrow}>JORNADA DE HOJE</Text><Text style={styles.journeyTitle}>Em andamento</Text></View>
-          <View style={styles.hoursBlock}><Text style={styles.hours}>04h 58m</Text><Text style={styles.hoursLabel}>trabalhadas</Text></View>
-        </View>
+            <View style={styles.journeyCard}>
+              <View><Text style={styles.eyebrow}>JORNADA DE HOJE</Text><Text style={styles.journeyTitle}>{journeyTitle}</Text></View>
+              <View style={styles.hoursBlock}><Text style={styles.hours}>{workedHours}</Text><Text style={styles.hoursLabel}>trabalhadas</Text></View>
+            </View>
 
-        <Pressable style={({ pressed }) => [styles.registerButton, pressed && styles.pressed]} onPress={() => Alert.alert('Validação de ponto', 'A próxima tela confirmará biometria, lerá o QR Code e validará a localização.')}>
-          <View><Text style={styles.registerText}>Registrar ponto</Text><Text style={styles.registerHint}>Biometria · QR Code · Localização</Text></View>
-          <Text style={styles.arrow}>→</Text>
-        </Pressable>
+            {!journeyFinished && <Pressable style={({ pressed }) => [styles.registerButton, pressed && styles.pressed]} onPress={goToPointValidation}>
+              <View><Text style={styles.registerText}>{nextPointLabels[nextPointType]}</Text><Text style={styles.registerHint}>Biometria · QR Code · Localização</Text></View>
+              <Text style={styles.arrow}>→</Text>
+            </Pressable>}
 
-        <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Localização atual</Text><View style={styles.live}><View style={styles.liveDot} /><Text style={styles.liveText}>AO VIVO</Text></View></View>
-        <View style={styles.locationCard}>
-          {Platform.OS === 'web' ? <View style={styles.webMap}><Text style={styles.webMapText}>Mapa disponível no aplicativo móvel</Text></View> : <MapView style={styles.map} region={region} scrollEnabled={false} rotateEnabled={false}><Marker coordinate={region} title="Você está aqui" /><Circle center={region} radius={60} fillColor="rgba(28,27,24,.12)" strokeColor="rgba(28,27,24,.35)" /></MapView>}
-          <View style={styles.locationInfo}>{isLocating && <ActivityIndicator size="small" color={colors.primary} />}<Text style={styles.locationText}>{locationText}</Text></View>
-        </View>
-
-        <View style={styles.sectionHeader}><Text style={styles.sectionTitle}>Histórico de hoje</Text><Text style={styles.count}>3 registros</Text></View>
-        <View style={styles.historyCard}>{records.map(([label, time], index) => <View key={label} style={[styles.record, index < records.length - 1 && styles.recordBorder]}><View style={styles.recordIcon}><View style={styles.recordDot} /></View><Text style={styles.recordLabel}>{label}</Text><Text style={styles.time}>{time}</Text><Text style={styles.confirmed}>Confirmado</Text></View>)}</View>
-      </ScrollView>
+            <View style={styles.todayCard}>
+              <View style={styles.todayHeader}>
+                <View><Text style={styles.todayEyebrow}>REGISTROS DE HOJE</Text><Text style={styles.todayTitle}>Hoje</Text></View>
+                <View style={styles.todayCount}><Text style={styles.todayCountValue}>{recordedCount}/4</Text><Text style={styles.todayCountLabel}>pontos</Text></View>
+              </View>
+              <View style={styles.todayTable}>
+                {pointRows.map(({ type, label, time }, index) => <View key={type} style={[styles.todayRow, index < pointRows.length - 1 && styles.todayRowBorder]}>
+                  <View style={[styles.todayDot, time === '—' && styles.todayDotPending]} />
+                  <Text style={styles.todayLabel}>{label}</Text>
+                  <Text style={[styles.todayTime, time === '—' && styles.todayTimePending]}>{time}</Text>
+                  <Ionicons name={time === '—' ? 'remove' : 'checkmark'} size={16} color={time === '—' ? '#77736D' : '#A9C9B0'} />
+                </View>)}
+              </View>
+            </View>
+              </View>
+            </View>
+          </>
+        )}
+      </Animated.View>
 
       <View style={styles.bottomNav} {...panResponder.panHandlers}>
         <Animated.View style={[styles.tabIndicator, { left: 8 + (tabWidth - 50) / 2, transform: [{ translateX: tabPosition }] }]} />
@@ -184,7 +242,7 @@ const styles = StyleSheet.create({
   greetingBlock: { marginBottom: 26 }, greeting: { color: colors.text, fontSize: 28, lineHeight: 34 }, name: { color: colors.text, fontSize: 28, fontWeight: '600', lineHeight: 34 }, date: { color: colors.disabled, fontSize: 13, marginTop: 8, textTransform: 'capitalize' },
   journeyCard: { alignItems: 'center', backgroundColor: '#FCFAF8', borderColor: '#E2DDD5', borderRadius: 18, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14, padding: 18 }, eyebrow: { color: colors.disabled, fontSize: 10, fontWeight: '700', letterSpacing: .8, marginBottom: 5 }, journeyTitle: { color: colors.text, fontSize: 17, fontWeight: '600' }, hoursBlock: { alignItems: 'flex-end' }, hours: { color: colors.text, fontSize: 18, fontWeight: '700' }, hoursLabel: { color: colors.disabled, fontSize: 11, marginTop: 2 },
   registerButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 18, flexDirection: 'row', justifyContent: 'space-between', marginBottom: 32, paddingHorizontal: 20, paddingVertical: 18 }, pressed: { opacity: .84 }, registerText: { color: colors.background, fontSize: 17, fontWeight: '700' }, registerHint: { color: '#D8D2C9', fontSize: 11, marginTop: 4 }, arrow: { color: colors.background, fontSize: 29 },
+  registerButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 18, flexDirection: 'row', justifyContent: 'space-between', marginBottom: 32, paddingHorizontal: 20, paddingVertical: 18 }, pressed: { opacity: .84 }, registerText: { color: colors.background, fontSize: 17, fontWeight: '700' }, registerHint: { color: '#D8D2C9', fontSize: 11, marginTop: 4 }, arrow: { color: colors.background, fontSize: 29 },
   sectionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }, sectionTitle: { color: colors.text, fontSize: 17, fontWeight: '600' }, live: { alignItems: 'center', backgroundColor: '#E9E4DC', borderRadius: 10, flexDirection: 'row', gap: 5, paddingHorizontal: 8, paddingVertical: 5 }, liveDot: { backgroundColor: '#5E7A68', borderRadius: 4, height: 7, width: 7 }, liveText: { color: '#5E7A68', fontSize: 9, fontWeight: '700', letterSpacing: .7 },
-  locationCard: { backgroundColor: '#FCFAF8', borderColor: '#E2DDD5', borderRadius: 18, borderWidth: 1, marginBottom: 32, overflow: 'hidden' }, map: { height: 156, width: '100%' }, webMap: { alignItems: 'center', backgroundColor: '#E9E4DC', height: 156, justifyContent: 'center' }, webMapText: { color: colors.disabled, fontSize: 12 }, locationInfo: { alignItems: 'center', flexDirection: 'row', gap: 8, minHeight: 48, paddingHorizontal: 14 }, locationText: { color: colors.text, flex: 1, fontSize: 12 },
-  count: { color: colors.disabled, fontSize: 12 }, historyCard: { backgroundColor: '#FCFAF8', borderColor: '#E2DDD5', borderRadius: 18, borderWidth: 1, overflow: 'hidden' }, record: { alignItems: 'center', flexDirection: 'row', minHeight: 62, paddingHorizontal: 15 }, recordBorder: { borderBottomColor: '#EAE5DE', borderBottomWidth: 1 }, recordIcon: { alignItems: 'center', backgroundColor: '#E9E4DC', borderRadius: 12, height: 24, justifyContent: 'center', marginRight: 10, width: 24 }, recordDot: { backgroundColor: colors.primary, borderRadius: 4, height: 8, width: 8 }, recordLabel: { color: colors.text, flex: 1, fontSize: 12 }, time: { color: colors.text, fontSize: 13, fontWeight: '700', marginRight: 12 }, confirmed: { color: '#5E7A68', fontSize: 10, fontWeight: '600' },
+  todayCard: { alignSelf: 'flex-end', backgroundColor: colors.primary, borderBottomLeftRadius: 72, borderBottomRightRadius: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16, marginBottom: 16, marginRight: -4, marginTop: 4, overflow: 'hidden', padding: 15, width: '92%' }, todayHeader: { alignItems: 'center', alignSelf: 'flex-end', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, paddingLeft: 0, width: '88%' }, todayEyebrow: { color: '#AAA49B', fontSize: 9, fontWeight: '700', letterSpacing: 1, marginBottom: 2 }, todayTitle: { color: colors.background, fontSize: 22, fontWeight: '600' }, todayCount: { alignItems: 'flex-end' }, todayCountValue: { color: colors.background, fontSize: 15, fontWeight: '700' }, todayCountLabel: { color: '#AAA49B', fontSize: 9, marginTop: 1 }, todayTable: { alignSelf: 'flex-end', backgroundColor: '#292824', borderRadius: 15, overflow: 'hidden', paddingHorizontal: 10, width: '88%' }, todayRow: { alignItems: 'center', flexDirection: 'row', minHeight: 42 }, todayRowBorder: { borderBottomColor: '#44413B', borderBottomWidth: 1 }, todayDot: { backgroundColor: '#A9C9B0', borderRadius: 4, height: 7, marginRight: 10, width: 7 }, todayDotPending: { backgroundColor: '#77736D' }, todayLabel: { color: '#E8E2D8', flex: 1, fontSize: 12 }, todayTime: { color: colors.background, fontSize: 13, fontWeight: '700', marginRight: 12 }, todayTimePending: { color: '#77736D' },
 });
