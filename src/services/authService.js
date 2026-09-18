@@ -13,11 +13,13 @@ function isValidEmail(email) {
 }
 
 export const authService = {
-  async register(email, password) {
+  async register(firstName, lastName, email, password) {
+    const normalizedFirstName = firstName.trim();
+    const normalizedLastName = lastName.trim();
     const normalizedEmail = email.trim().toLowerCase();
 
-    if (!normalizedEmail || !password) {
-      throw new Error('Preencha e-mail e senha.');
+    if (!normalizedFirstName || !normalizedLastName || !normalizedEmail || !password) {
+      throw new Error('Preencha nome, sobrenome, e-mail e senha.');
     }
     if (!isValidEmail(normalizedEmail)) {
       throw new Error('Insira um e-mail válido.');
@@ -39,7 +41,12 @@ export const authService = {
 
     await AsyncStorage.setItem(
       STORAGE_KEYS.CREDENTIALS,
-      JSON.stringify({ email: normalizedEmail, passwordHash })
+      JSON.stringify({
+        firstName: normalizedFirstName,
+        lastName: normalizedLastName,
+        email: normalizedEmail,
+        passwordHash,
+      })
     );
   },
 
@@ -64,7 +71,12 @@ export const authService = {
       throw new Error('E-mail ou senha incorretos.');
     }
 
-    const session = { email: credentials.email };
+    const session = {
+      firstName: credentials.firstName,
+      lastName: credentials.lastName,
+      email: credentials.email,
+      photo: credentials.photo || null,
+    };
     await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
     return session;
   },
@@ -77,4 +89,76 @@ export const authService = {
     const data = await AsyncStorage.getItem(STORAGE_KEYS.SESSION);
     return data ? JSON.parse(data) : null;
   },
+
+  async updateProfile(firstName, lastName) {
+    const stored = await AsyncStorage.getItem(STORAGE_KEYS.CREDENTIALS);
+    if (!stored) throw new Error('Credenciais não encontradas.');
+    const credentials = JSON.parse(stored);
+
+    credentials.firstName = firstName.trim();
+    credentials.lastName = lastName.trim();
+
+    await AsyncStorage.setItem(STORAGE_KEYS.CREDENTIALS, JSON.stringify(credentials));
+
+    const session = await this.getSession();
+    if (session) {
+      session.firstName = credentials.firstName;
+      session.lastName = credentials.lastName;
+      await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
+      return session;
+    }
+  },
+
+  async updateEmail(email) {
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!isValidEmail(normalizedEmail)) throw new Error('Insira um e-mail válido.');
+
+    const stored = await AsyncStorage.getItem(STORAGE_KEYS.CREDENTIALS);
+    if (!stored) throw new Error('Credenciais não encontradas.');
+    const credentials = JSON.parse(stored);
+
+    credentials.email = normalizedEmail;
+
+    await AsyncStorage.setItem(STORAGE_KEYS.CREDENTIALS, JSON.stringify(credentials));
+
+    const session = await this.getSession();
+    if (session) {
+      session.email = credentials.email;
+      await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
+      return session;
+    }
+  },
+
+  async updatePassword(currentPassword, newPassword) {
+    const stored = await AsyncStorage.getItem(STORAGE_KEYS.CREDENTIALS);
+    if (!stored) throw new Error('Credenciais não encontradas.');
+    const credentials = JSON.parse(stored);
+
+    const isMatch = await bcrypt.compare(currentPassword, credentials.passwordHash);
+    if (!isMatch) throw new Error('Senha atual incorreta.');
+
+    if (newPassword.length < 6) throw new Error('A nova senha deve ter no mínimo 6 caracteres.');
+
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(newPassword, salt);
+    credentials.passwordHash = passwordHash;
+
+    await AsyncStorage.setItem(STORAGE_KEYS.CREDENTIALS, JSON.stringify(credentials));
+  },
+
+  async updatePhoto(photoUri) {
+    const stored = await AsyncStorage.getItem(STORAGE_KEYS.CREDENTIALS);
+    if (!stored) throw new Error('Credenciais não encontradas.');
+    const credentials = JSON.parse(stored);
+
+    credentials.photo = photoUri;
+    await AsyncStorage.setItem(STORAGE_KEYS.CREDENTIALS, JSON.stringify(credentials));
+
+    const session = await this.getSession();
+    if (session) {
+      session.photo = photoUri;
+      await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
+      return session;
+    }
+  }
 };

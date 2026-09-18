@@ -5,6 +5,7 @@ import LoadingScreen from '../components/LoadingScreen';
 import WelcomeScreen from '../screens/WelcomeScreen';
 import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
+import PointValidationScreen from '../screens/PointValidationScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -19,13 +20,15 @@ export default function AppNavigator() {
     <NavigationContainer>
       <Stack.Navigator
         screenOptions={{
-          animation: 'fade',
-          animationDuration: 650,
+          animation: 'none',
           headerShown: false,
         }}
       >
         {isAuthenticated ? (
-          <Stack.Screen name="Home" component={HomeScreen} />
+          <>
+            <Stack.Screen name="Home" component={HomeScreen} />
+            <Stack.Screen name="PointValidation" component={PointValidationScreen} />
+          </>
         ) : (
           <>
             <Stack.Screen name="Welcome" component={WelcomeScreen} />

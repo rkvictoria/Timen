@@ -9,6 +9,22 @@
     "ios": {
       "supportsTablet": true
     },
+    "plugins": [
+      "expo-local-authentication",
+      [
+        "expo-camera",
+        {
+          "cameraPermission": "Permita que o Timen use a câmera para ler o QR Code do ponto.",
+          "barcodeScannerEnabled": true
+        }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "Permita que o Timen use sua localização para validar o ponto."
+        }
+      ]
+    ],
     "android": {
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
