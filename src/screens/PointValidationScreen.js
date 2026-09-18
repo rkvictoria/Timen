@@ -8,6 +8,7 @@ import MapView, { Circle, Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { colors } from '../styles/colors';
+import { savePoint } from '../services/pointService';
 
 // Trocar para real
 const WORKPLACE = { name: 'Escritório', latitude: -22.52621608967333, longitude: -43.71406731187226, allowedRadius: 10000000 };
@@ -21,7 +22,7 @@ function distanceInMeters(from, to) {
   return earthRadius * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
 }
 
-export default function PointValidationScreen({ navigation }) {
+export default function PointValidationScreen({ navigation, route }) {
   const [step, setStep] = useState('location');
   const backArrowOffset = useRef(new Animated.Value(0)).current;
   const stepOpacity = useRef(new Animated.Value(0)).current;
@@ -159,8 +160,10 @@ export default function PointValidationScreen({ navigation }) {
     finishValidation();
   };
 
-  const finishValidation = () => {
-    setRecordedAt(new Date());
+  const finishValidation = async () => {
+    const recordedAtValue = new Date();
+    await savePoint(route.params?.pointType || 'entry');
+    setRecordedAt(recordedAtValue);
     setStep('success');
   };
 
