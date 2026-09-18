@@ -30,9 +30,39 @@ export function AuthProvider({ children }) {
     setUser(null);
   }, []);
 
+  const updateProfile = useCallback(async (firstName, lastName) => {
+    const session = await authService.updateProfile(firstName, lastName);
+    setUser(session);
+  }, []);
+
+  const updateEmail = useCallback(async (email) => {
+    const session = await authService.updateEmail(email);
+    setUser(session);
+  }, []);
+
+  const updatePassword = useCallback(async (currentPassword, newPassword) => {
+    await authService.updatePassword(currentPassword, newPassword);
+  }, []);
+
+  const updatePhoto = useCallback(async (photoUri) => {
+    const session = await authService.updatePhoto(photoUri);
+    setUser(session);
+  }, []);
+
   return (
     <AuthContext.Provider
-      value={{ user, isLoading, isAuthenticated: !!user, login, register, logout }}
+      value={{ 
+        user, 
+        isLoading, 
+        isAuthenticated: !!user, 
+        login, 
+        register, 
+        logout,
+        updateProfile,
+        updateEmail,
+        updatePassword,
+        updatePhoto
+      }}
     >
       {children}
     </AuthContext.Provider>
