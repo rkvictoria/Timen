@@ -24,8 +24,8 @@ function distanceInMeters(from, to) {
 export default function PointValidationScreen({ navigation }) {
   const [step, setStep] = useState('location');
   const backArrowOffset = useRef(new Animated.Value(0)).current;
-  const stepOpacity = useRef(new Animated.Value(1)).current;
-  const stepScale = useRef(new Animated.Value(1)).current;
+  const stepOpacity = useRef(new Animated.Value(0)).current;
+  const stepScale = useRef(new Animated.Value(0.9)).current;
   const identityFillAnimation = useRef(new Animated.Value(0)).current;
   const qrButtonAnimation = useRef(new Animated.Value(0)).current;
   const scanLocked = useRef(false);
@@ -41,6 +41,13 @@ export default function PointValidationScreen({ navigation }) {
   const [recordedAt, setRecordedAt] = useState(null);
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const { height: windowHeight } = useWindowDimensions();
+
+  useEffect(() => {
+    Animated.parallel([
+      Animated.timing(stepOpacity, { toValue: 1, duration: 230, useNativeDriver: true }),
+      Animated.spring(stepScale, { toValue: 1, friction: 8, tension: 85, useNativeDriver: true }),
+    ]).start();
+  }, [stepOpacity, stepScale]);
 
   useEffect(() => {
     async function loadLocation() {

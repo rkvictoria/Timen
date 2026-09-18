@@ -20,8 +20,7 @@ export default function AppNavigator() {
     <NavigationContainer>
       <Stack.Navigator
         screenOptions={{
-          animation: 'fade',
-          animationDuration: 650,
+          animation: 'none',
           headerShown: false,
         }}
       >
