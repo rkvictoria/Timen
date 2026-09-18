@@ -233,6 +233,7 @@ export default function HomeScreen({ navigation }) {
 
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.primary }, darkHeader: { alignItems: 'flex-end', height: 94, paddingHorizontal: 22, paddingTop: 16 },
+  tabContent: { flex: 1 },
   logoutButton: { borderColor: '#6C6861', borderRadius: 16, borderWidth: 1, paddingHorizontal: 13, paddingVertical: 7 }, logoutButtonPressed: { opacity: .7 }, logoutText: { color: colors.background, fontSize: 12, fontWeight: '600' },
   sheet: { flex: 1, backgroundColor: colors.background, borderTopLeftRadius: 40, borderTopRightRadius: 40 }, content: { padding: 22, paddingTop: 34, paddingBottom: 124 },
   bottomNav: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 25, bottom: 22, flexDirection: 'row', height: 64, justifyContent: 'space-around', left: 22, paddingHorizontal: 8, position: 'absolute', right: 22 },
