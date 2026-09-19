@@ -568,7 +568,7 @@ const styles = StyleSheet.create({
   cameraOnly: { flex: 1 },
   scannerFrame: { borderColor: colors.background, borderRadius: 16, borderWidth: 2, height: 220, left: '50%', position: 'absolute', top: '50%', transform: [{ translateX: -110 }, { translateY: -110 }], width: 220 },
   confirmSlot: { alignItems: 'center', backgroundColor: '#FFFFFF', justifyContent: 'center', paddingVertical: 8, width: '36%' },
-  confirmSquare: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 12, height: 46, justifyContent: 'center', width: 46 },
+  confirmSquare: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 12, height: 46, justifyContent: 'center', width: 80 },
   confirmSquarePressed: { opacity: .8 },
 
   // Tela de ponto confirmado
