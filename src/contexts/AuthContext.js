@@ -50,6 +50,11 @@ export function AuthProvider({ children }) {
     setUser(session);
   }, []);
 
+  const resetWorkplaceLocation = useCallback(async () => {
+    const session = await authService.resetWorkplaceLocation();
+    setUser(session);
+  }, []);
+
   const updatePassword = useCallback(async (currentPassword, newPassword) => {
     await authService.updatePassword(currentPassword, newPassword);
   }, []);
@@ -72,6 +77,7 @@ export function AuthProvider({ children }) {
         updateEmail,
         updateWorkplace,
         updateWorkplaceLocation,
+        resetWorkplaceLocation,
         updatePassword,
         updatePhoto
       }}
