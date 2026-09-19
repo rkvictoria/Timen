@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { ActivityIndicator, Alert, Animated, Platform, Pressable, ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
+import { ActivityIndicator, Alert, Animated, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, View, useWindowDimensions } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { CameraView, useCameraPermissions } from 'expo-camera';
 import * as LocalAuthentication from 'expo-local-authentication';
@@ -9,9 +9,16 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { colors } from '../styles/colors';
 import { savePoint } from '../services/pointService';
+import { useAuth } from '../hooks/useAuth';
 
-// Trocar para real
-const WORKPLACE = { name: 'Escritório', latitude: -22.52621608967333, longitude: -43.71406731187226, allowedRadius: 10000000 };
+const FALLBACK_REGION = { latitude: -22.9068, longitude: -43.1729 };
+
+const successCopy = {
+  entry: { label: 'ENTRADA REGISTRADA', title: 'Bora trabalhar.' },
+  break: { label: 'INTERVALO INICIADO', title: 'Café merecido.' },
+  return: { label: 'RETORNO REGISTRADO', title: 'De volta ao jogo.' },
+  exit: { label: 'SAÍDA REGISTRADA', title: 'Missão cumprida.' },
+};
 
 function distanceInMeters(from, to) {
   const earthRadius = 6371000;
@@ -23,13 +30,21 @@ function distanceInMeters(from, to) {
 }
 
 export default function PointValidationScreen({ navigation, route }) {
+  const { user, updateWorkplaceLocation } = useAuth();
+  const workplaceName = user?.workplace || 'Local de trabalho';
+  const hasWorkplaceLocation = !!user?.workplaceLocation;
+  const workplace = hasWorkplaceLocation ? { ...user.workplaceLocation, name: workplaceName } : null;
+  
   const [step, setStep] = useState('location');
   const backArrowOffset = useRef(new Animated.Value(0)).current;
   const stepOpacity = useRef(new Animated.Value(0)).current;
   const stepScale = useRef(new Animated.Value(0.9)).current;
   const identityFillAnimation = useRef(new Animated.Value(0)).current;
   const qrButtonAnimation = useRef(new Animated.Value(0)).current;
+  const successBadge = useRef(new Animated.Value(0)).current;
+  const successReveal = useRef(new Animated.Value(0)).current;
   const scanLocked = useRef(false);
+  
   const [currentLocation, setCurrentLocation] = useState(null);
   const [locationMessage, setLocationMessage] = useState('Buscando sua localização…');
   const [isLoadingLocation, setIsLoadingLocation] = useState(true);
@@ -43,12 +58,28 @@ export default function PointValidationScreen({ navigation, route }) {
   const [cameraPermission, requestCameraPermission] = useCameraPermissions();
   const { height: windowHeight } = useWindowDimensions();
 
+  // Estados da Primeira Página (Setup)
+  const [selectedSetupCoords, setSelectedSetupCoords] = useState(null);
+  const [radiusInput, setRadiusInput] = useState('300');
+  const [isLocatingSetup, setIsLocatingSetup] = useState(false);
+  const [isSavingLocation, setIsSavingLocation] = useState(false);
+
   useEffect(() => {
     Animated.parallel([
       Animated.timing(stepOpacity, { toValue: 1, duration: 230, useNativeDriver: true }),
       Animated.spring(stepScale, { toValue: 1, friction: 8, tension: 85, useNativeDriver: true }),
     ]).start();
   }, [stepOpacity, stepScale]);
+
+  useEffect(() => {
+    if (step !== 'success') return;
+    successBadge.setValue(0);
+    successReveal.setValue(0);
+    Animated.parallel([
+      Animated.spring(successBadge, { toValue: 1, friction: 5, tension: 80, useNativeDriver: true }),
+      Animated.timing(successReveal, { toValue: 1, duration: 1100, delay: 200, useNativeDriver: true }),
+    ]).start();
+  }, [step, successBadge, successReveal]);
 
   useEffect(() => {
     async function loadLocation() {
@@ -69,6 +100,13 @@ export default function PointValidationScreen({ navigation, route }) {
     }
     loadLocation();
   }, []);
+
+  // Preenche a localização inicial no mapa de Setup
+  useEffect(() => {
+    if (!hasWorkplaceLocation && currentLocation && !selectedSetupCoords) {
+      setSelectedSetupCoords(currentLocation);
+    }
+  }, [currentLocation, hasWorkplaceLocation, selectedSetupCoords]);
 
   useEffect(() => {
     const animation = Animated.loop(
@@ -95,13 +133,21 @@ export default function PointValidationScreen({ navigation, route }) {
     });
   };
 
-  const distance = useMemo(() => currentLocation ? Math.round(distanceInMeters(currentLocation, WORKPLACE)) : null, [currentLocation]);
-  const isAllowed = distance !== null && distance <= WORKPLACE.allowedRadius;
-  const mapRegion = currentLocation ? { ...currentLocation, latitudeDelta: 0.006, longitudeDelta: 0.006 } : { latitude: WORKPLACE.latitude, longitude: WORKPLACE.longitude, latitudeDelta: 0.012, longitudeDelta: 0.012 };
+  const distance = useMemo(
+    () => (currentLocation && workplace) ? Math.round(distanceInMeters(currentLocation, workplace)) : null,
+    [currentLocation, workplace]
+  );
+  const isAllowed = distance !== null && distance <= (workplace?.allowedRadius || 0);
+  const mapRegion = currentLocation
+    ? { ...currentLocation, latitudeDelta: 0.006, longitudeDelta: 0.006 }
+    : workplace
+      ? { latitude: workplace.latitude, longitude: workplace.longitude, latitudeDelta: 0.012, longitudeDelta: 0.012 }
+      : { ...FALLBACK_REGION, latitudeDelta: 0.05, longitudeDelta: 0.05 };
 
   useEffect(() => {
+    if (!hasWorkplaceLocation) return;
     if (distance !== null) setLocationMessage(isAllowed ? 'Local permitido' : 'Você está fora do raio permitido.');
-  }, [distance, isAllowed]);
+  }, [distance, isAllowed, hasWorkplaceLocation]);
 
   const confirmIdentity = async () => {
     const hasHardware = await LocalAuthentication.hasHardwareAsync();
@@ -167,25 +213,149 @@ export default function PointValidationScreen({ navigation, route }) {
     setStep('success');
   };
 
+  // Funções da Primeira Página (Setup)
+  const useSetupCurrentLocation = async () => {
+    setIsLocatingSetup(true);
+    try {
+      const { status } = await Location.requestForegroundPermissionsAsync();
+      if (status !== 'granted') {
+        Alert.alert('Erro', 'Permita o acesso à localização para usar essa opção.');
+        return;
+      }
+      const { coords } = await Location.getCurrentPositionAsync({});
+      setSelectedSetupCoords({ latitude: coords.latitude, longitude: coords.longitude });
+    } catch {
+      Alert.alert('Erro', 'Não foi possível obter sua localização.');
+    } finally {
+      setIsLocatingSetup(false);
+    }
+  };
+
+  const handleSaveSetupLocation = async () => {
+    if (!selectedSetupCoords) {
+      Alert.alert('Erro', 'Toque no mapa para marcar o local.');
+      return;
+    }
+    const radiusValue = Number(radiusInput);
+    if (!Number.isFinite(radiusValue) || radiusValue <= 0) {
+      Alert.alert('Erro', 'Informe um raio válido em metros.');
+      return;
+    }
+    setIsSavingLocation(true);
+    try {
+      await updateWorkplaceLocation(selectedSetupCoords.latitude, selectedSetupCoords.longitude, radiusValue);
+    } catch (err) {
+      Alert.alert('Erro', err.message);
+    } finally {
+      setIsSavingLocation(false);
+    }
+  };
+
+  const setupMapRegion = selectedSetupCoords
+    ? { ...selectedSetupCoords, latitudeDelta: 0.01, longitudeDelta: 0.01 }
+    : currentLocation
+      ? { ...currentLocation, latitudeDelta: 0.01, longitudeDelta: 0.01 }
+      : { ...FALLBACK_REGION, latitudeDelta: 0.05, longitudeDelta: 0.05 };
+  const setupRadiusValue = Number(radiusInput) || 0;
+  const setupConfirmDisabled = !selectedSetupCoords || isSavingLocation;
+
+  // Render da Primeira Página (Setup)
+  const renderSetup = () => (
+    <>
+      <View style={styles.mapCard}>
+        {Platform.OS === 'web' ? <Text style={styles.mapFallback}>Mapa disponível no aplicativo móvel</Text> : (
+          <MapView
+            style={styles.map}
+            region={setupMapRegion}
+            onPress={(e) => setSelectedSetupCoords(e.nativeEvent.coordinate)}
+          >
+            {selectedSetupCoords && (
+              <>
+                <Marker
+                  coordinate={selectedSetupCoords}
+                  draggable
+                  onDragEnd={(e) => setSelectedSetupCoords(e.nativeEvent.coordinate)}
+                  pinColor="#1C1B18"
+                />
+                {setupRadiusValue > 0 && (
+                  <Circle center={selectedSetupCoords} radius={setupRadiusValue} fillColor="rgba(28,27,24,.10)" strokeColor="rgba(28,27,24,.35)" />
+                )}
+              </>
+            )}
+          </MapView>
+        )}
+        <View pointerEvents="none" style={styles.mapLegend}>
+          <View style={styles.legendItem}>
+            <View style={styles.workplaceDot} />
+            <Text style={styles.legendText}>{selectedSetupCoords ? 'Local selecionado' : 'Toque no mapa'}</Text>
+          </View>
+        </View>
+      </View>
+      <View style={styles.timeRow}>
+        <View style={styles.confirmSlot}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Salvar local de trabalho"
+            disabled={setupConfirmDisabled}
+            onPress={handleSaveSetupLocation}
+            style={({ pressed }) => [styles.confirmSquare, setupConfirmDisabled && styles.buttonDisabled, pressed && styles.confirmSquarePressed]}
+          >
+            {isSavingLocation ? <ActivityIndicator color={colors.background} /> : <Ionicons name="checkmark" size={26} color={colors.background} />}
+          </Pressable>
+        </View>
+        <View style={styles.statusBadge}>
+          <Ionicons name={selectedSetupCoords ? 'checkmark' : 'information'} size={17} color={colors.background} />
+          <Text style={styles.statusText}>{selectedSetupCoords ? 'Toque e arraste para ajustar' : 'Toque no mapa para marcar o local'}</Text>
+        </View>
+      </View>
+      <View style={styles.locationDetails}>
+        <View style={styles.detailItem}>
+          <Ionicons name="business-outline" size={18} color={colors.primary} />
+          <Text style={styles.detailLabel}>LOCAL</Text>
+          <Text style={styles.detailValue}>{workplaceName}</Text>
+        </View>
+        <View style={styles.detailSeparator} />
+        <Pressable style={styles.detailItem} onPress={useSetupCurrentLocation} disabled={isLocatingSetup}>
+          <Ionicons name="locate-outline" size={18} color={colors.primary} />
+          <Text style={styles.detailLabel}>ATUAL</Text>
+          {isLocatingSetup ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.detailValue}>Usar</Text>}
+        </Pressable>
+        <View style={styles.detailSeparator} />
+        <View style={styles.detailItem}>
+          <Ionicons name="radio-outline" size={18} color={colors.primary} />
+          <Text style={styles.detailLabel}>RAIO (M)</Text>
+          <TextInput
+            style={styles.radiusInlineInput}
+            value={radiusInput}
+            onChangeText={setRadiusInput}
+            keyboardType="numeric"
+            placeholder="300"
+          />
+        </View>
+      </View>
+    </>
+  );
+
+  // Render da Segunda Página
   const renderLocation = () => (
     <>
       <View style={styles.mapCard}>
-        {Platform.OS === 'web' ? <Text style={styles.mapFallback}>Mapa disponível no aplicativo móvel</Text> : <MapView style={styles.map} region={mapRegion} scrollEnabled={false} rotateEnabled={false}><Marker coordinate={WORKPLACE} title={WORKPLACE.name} pinColor="#1C1B18" />{currentLocation && <Marker coordinate={currentLocation} title="Você está aqui" pinColor="#5E7A68" />}<Circle center={WORKPLACE} radius={WORKPLACE.allowedRadius} fillColor="rgba(28,27,24,.10)" strokeColor="rgba(28,27,24,.35)" /></MapView>}
+        {Platform.OS === 'web' ? <Text style={styles.mapFallback}>Mapa disponível no aplicativo móvel</Text> : <MapView style={styles.map} region={mapRegion} scrollEnabled={false} rotateEnabled={false}><Marker coordinate={workplace} title={workplace.name} pinColor="#1C1B18" />{currentLocation && <Marker coordinate={currentLocation} title="Você está aqui" pinColor="#5E7A68" />}<Circle center={workplace} radius={workplace.allowedRadius} fillColor="rgba(28,27,24,.10)" strokeColor="rgba(28,27,24,.35)" /></MapView>}
         <View pointerEvents="none" style={styles.mapLegend}>
-          <View style={styles.legendItem}><View style={styles.workplaceDot} /><Text style={styles.legendText}>{WORKPLACE.name}</Text></View>
+          <View style={styles.legendItem}><View style={styles.workplaceDot} /><Text style={styles.legendText}>{workplace.name}</Text></View>
           <View style={styles.legendItem}><View style={styles.currentLocationDot} /><Text style={styles.legendText}>Você está aqui</Text></View>
         </View>
       </View>
       <View style={styles.timeRow}><Text style={styles.currentTime}>{new Date().toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</Text><View style={[styles.statusBadge, !isAllowed && !isLoadingLocation && styles.statusBadgeDenied]}><Ionicons name={isAllowed ? 'checkmark' : 'information'} size={17} color={colors.background} /><Text style={[styles.statusText, !isAllowed && !isLoadingLocation && styles.statusTextDenied]}>{locationMessage}</Text></View></View>
       <View style={styles.locationDetails}>
-        <View style={styles.detailItem}><Ionicons name="business-outline" size={18} color={colors.primary} /><Text style={styles.detailLabel}>LOCAL</Text><Text style={styles.detailValue}>{WORKPLACE.name}</Text></View>
+        <View style={styles.detailItem}><Ionicons name="business-outline" size={18} color={colors.primary} /><Text style={styles.detailLabel}>LOCAL</Text><Text style={styles.detailValue}>{workplace.name}</Text></View>
         <View style={styles.detailSeparator} />
         <View style={styles.detailItem}><Ionicons name="navigate-outline" size={18} color={colors.primary} /><Text style={styles.detailLabel}>DISTÂNCIA</Text>{isLoadingLocation ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.detailValue}>{distance !== null ? `${distance} m` : 'Indisponível'}</Text>}</View>
         <View style={styles.detailSeparator} />
-        <View style={styles.detailItem}><Ionicons name="radio-outline" size={18} color={colors.primary} /><Text style={styles.detailLabel}>RAIO</Text><Text style={styles.detailValue}>{WORKPLACE.allowedRadius} m</Text></View>
-        <View style={styles.detailRow}><Ionicons name="business-outline" size={18} color={colors.primary} /><View><Text style={styles.detailLabel}>LOCAL DE TRABALHO</Text><Text style={styles.detailValue}>{WORKPLACE.name}</Text></View></View>
+        <View style={styles.detailItem}><Ionicons name="radio-outline" size={18} color={colors.primary} /><Text style={styles.detailLabel}>RAIO</Text><Text style={styles.detailValue}>{workplace.allowedRadius} m</Text></View>
+        <View style={styles.detailRow}><Ionicons name="business-outline" size={18} color={colors.primary} /><View><Text style={styles.detailLabel}>LOCAL DE TRABALHO</Text><Text style={styles.detailValue}>{workplace.name}</Text></View></View>
         <View style={styles.detailRow}><Ionicons name="navigate-outline" size={18} color={colors.primary} /><View><Text style={styles.detailLabel}>DISTÂNCIA ATUAL</Text>{isLoadingLocation ? <ActivityIndicator size="small" color={colors.primary} /> : <Text style={styles.detailValue}>{distance !== null ? `${distance} m do local` : 'Localização indisponível'}</Text>}</View></View>
-        <View style={styles.detailRow}><Ionicons name="radio-outline" size={18} color={colors.primary} /><View><Text style={styles.detailLabel}>RAIO PERMITIDO</Text><Text style={styles.detailValue}>Até {WORKPLACE.allowedRadius} m</Text></View></View>
+        <View style={styles.detailRow}><Ionicons name="radio-outline" size={18} color={colors.primary} /><View><Text style={styles.detailLabel}>RAIO PERMITIDO</Text><Text style={styles.detailValue}>Até {workplace.allowedRadius} m</Text></View></View>
       </View>
       <Pressable disabled={!isAllowed} style={[styles.primaryButton, styles.locationPrimaryButton, !isAllowed && styles.buttonDisabled]} onPress={() => transitionTo('identity')}><Text style={styles.primaryButtonText}>Confirmar localização</Text></Pressable>
     </>
@@ -213,24 +383,107 @@ export default function PointValidationScreen({ navigation, route }) {
     </View>
   );
 
-  const renderSuccess = () => (
-    <View style={styles.successContent}>
-      <Ionicons name="checkmark" size={52} color="#41634D" />
-      <Text style={styles.successTitle}>Ponto registrado.</Text>
-      <Text style={styles.recordTime}>{recordedAt?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</Text>
-      <Text style={styles.recordDate}>{recordedAt?.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</Text>
-      <Text style={styles.successWorkplace}>{WORKPLACE.name}</Text>
-      <Text style={styles.confirmation}>✓ Local confirmado</Text>
-      <Text style={styles.confirmation}>✓ Identidade confirmada</Text>
-      <Text style={styles.confirmation}>✓ QR Code confirmado</Text>
-      <Pressable style={styles.primaryButton} onPress={() => navigation.popToTop()}><Text style={styles.primaryButtonText}>Voltar ao início</Text></Pressable>
-    </View>
-  );
+  const renderSuccess = () => {
+    const copy = successCopy[route.params?.pointType] || successCopy.entry;
+    const reveal = (start, end, distanceY = 18) => ({
+      opacity: successReveal.interpolate({ inputRange: [start, end], outputRange: [0, 1], extrapolate: 'clamp' }),
+      transform: [{ translateY: successReveal.interpolate({ inputRange: [start, end], outputRange: [distanceY, 0], extrapolate: 'clamp' }) }],
+    });
 
+    return (
+      <View style={styles.doneRoot}>
+        <View style={styles.doneTop}>
+          <View style={styles.doneTopRow}>
+            <Text style={styles.doneBrand}>Timen.</Text>
+            <View style={styles.donePill}>
+              <Text style={styles.donePillText} numberOfLines={1}>{workplace.name}</Text>
+            </View>
+          </View>
+
+          <View style={styles.doneHero}>
+            <Animated.View
+              style={[
+                styles.doneBadge,
+                {
+                  opacity: successBadge.interpolate({ inputRange: [0, 0.3], outputRange: [0, 1], extrapolate: 'clamp' }),
+                  transform: [
+                    { scale: successBadge },
+                    { rotate: successBadge.interpolate({ inputRange: [0, 1], outputRange: ['-24deg', '0deg'] }) },
+                  ],
+                },
+              ]}
+            >
+              <Ionicons name="checkmark" size={34} color={colors.primary} />
+            </Animated.View>
+            <Animated.Text style={[styles.doneEyebrow, reveal(0, 0.4)]}>{copy.label}</Animated.Text>
+            <Animated.Text style={[styles.doneTime, reveal(0.1, 0.55)]}>
+              {recordedAt?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            </Animated.Text>
+            <Animated.Text style={[styles.doneDate, reveal(0.25, 0.65)]}>
+              {recordedAt?.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
+            </Animated.Text>
+          </View>
+        </View>
+
+        <Animated.View style={[styles.doneCard, reveal(0.4, 0.85, 40)]}>
+          <Text style={styles.doneTitle}>{copy.title}</Text>
+          <Text style={styles.doneSubtitle}>Tudo validado. Pode seguir com o dia.</Text>
+
+          <Animated.View style={[styles.doneChecks, reveal(0.6, 0.9)]}>
+            {['Local', 'Identidade', 'QR Code'].map((label, index) => (
+              <View key={label} style={[styles.doneCheck, index > 0 && styles.doneCheckBorder]}>
+                <Ionicons name="checkmark-circle" size={20} color="#5E7A68" />
+                <Text style={styles.doneCheckLabel}>{label.toUpperCase()}</Text>
+              </View>
+            ))}
+          </Animated.View>
+
+          <Animated.View style={reveal(0.75, 1)}>
+            <Pressable style={styles.primaryButton} onPress={() => navigation.popToTop()}>
+              <Text style={styles.primaryButtonText}>Voltar ao início</Text>
+            </Pressable>
+          </Animated.View>
+        </Animated.View>
+      </View>
+    );
+  };
+
+  // Se não tem local salvo, exibe a Primeira Página (Setup)
+  if (!hasWorkplaceLocation) {
+    return (
+      <SafeAreaView style={styles.root} edges={['top']}>
+        <StatusBar style="light" />
+        <View style={styles.header}>
+          <View style={styles.headerRow}>
+            <Pressable accessibilityRole="button" accessibilityLabel="Voltar" onPress={() => navigation.goBack()}>
+              <Animated.View style={{ transform: [{ translateX: backArrowOffset }] }}>
+                <Ionicons name="chevron-back" size={27} color={colors.background} />
+              </Animated.View>
+            </Pressable>
+            <Text style={styles.brand}>Timen.</Text>
+            <View style={styles.headerSpacer} />
+          </View>
+          <Text style={styles.headerTitle}>Onde fica seu trabalho?</Text>
+        </View>
+        <ScrollView
+          style={styles.sheet}
+          contentContainerStyle={[styles.content, styles.locationContent]}
+          scrollEnabled={false}
+          showsVerticalScrollIndicator={false}
+        >
+          <Animated.View style={[styles.stepContent, { opacity: stepOpacity, transform: [{ scale: stepScale }] }]}>
+            {renderSetup()}
+          </Animated.View>
+        </ScrollView>
+      </SafeAreaView>
+    );
+  }
+
+  // Se já tem local, exibe a Segunda Página normalmente
   return (
     <SafeAreaView style={[styles.root, step === 'identity' && styles.identityRoot, identityFullscreen && styles.identityFullscreenRoot]} edges={['top']}>
       <StatusBar style={step === 'identity' && !identityFullscreen ? 'dark' : 'light'} />
-      <View style={[styles.header, step === 'identity' && styles.identityHeader, identityFullscreen && styles.hiddenHeader]}>
+      <View style={[styles.header, step === 'identity' && styles.identityHeader, (identityFullscreen || step === 'success') && styles.hiddenHeader]}>
         <View style={styles.headerRow}>
           <Pressable accessibilityRole="button" accessibilityLabel="Voltar" onPress={() => navigation.goBack()}>
             <Animated.View style={{ transform: [{ translateX: backArrowOffset }] }}>
@@ -243,8 +496,8 @@ export default function PointValidationScreen({ navigation, route }) {
         {step === 'location' && <Text style={styles.headerTitle}>Aonde você está?</Text>}
         {step === 'identity' && <Text style={styles.identityHeaderTitle}>Por favor, confirme que é você.</Text>}
       </View>
-      <ScrollView style={[styles.sheet, step === 'identity' && styles.identitySheet, step === 'scan' && styles.cameraPage, identityFullscreen && styles.fullscreenIdentitySheet]} contentContainerStyle={[styles.content, step === 'location' && styles.locationContent, step === 'identity' && styles.identityContent, step === 'scan' && styles.cameraContent]} scrollEnabled={step !== 'location' && step !== 'identity' && step !== 'scan'} showsVerticalScrollIndicator={false}>
-        <Animated.View style={[styles.stepContent, { opacity: stepOpacity, transform: [{ scale: stepScale }] }]}>
+      <ScrollView style={[styles.sheet, step === 'identity' && styles.identitySheet, step === 'scan' && styles.cameraPage, identityFullscreen && styles.fullscreenIdentitySheet, step === 'success' && styles.doneSheet]} contentContainerStyle={[styles.content, step === 'location' && styles.locationContent, step === 'identity' && styles.identityContent, step === 'scan' && styles.cameraContent, step === 'success' && styles.doneContent]} scrollEnabled={step !== 'location' && step !== 'identity' && step !== 'scan' && step !== 'success'} showsVerticalScrollIndicator={false}>
+        <Animated.View style={[styles.stepContent, step === 'success' && styles.doneStep, { opacity: stepOpacity, transform: [{ scale: stepScale }] }]}>
           {step === 'location' && renderLocation()}
           {step === 'identity' && renderIdentity()}
           {step === 'scan' && renderScanner()}
@@ -257,7 +510,7 @@ export default function PointValidationScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.primary }, header: { height: 128, justifyContent: 'space-between', paddingBottom: 24, paddingHorizontal: 18 }, headerRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingTop: 12 }, headerSpacer: { width: 27 }, brand: { color: colors.background, fontSize: 20, fontWeight: '600', letterSpacing: -.5 }, headerTitle: { color: colors.background, fontSize: 25, fontWeight: '500', textAlign: 'center' }, sheet: { backgroundColor: colors.background, borderTopLeftRadius: 40, borderTopRightRadius: 40, flex: 1 }, content: { alignItems: 'center', flexGrow: 1, paddingBottom: 42, paddingHorizontal: 24, paddingTop: 38 }, locationContent: { paddingHorizontal: 0, paddingTop: 0 }, title: { alignSelf: 'stretch', color: colors.text, fontSize: 27, fontWeight: '500', lineHeight: 34, marginBottom: 22, textAlign: 'center' }, mapCard: { alignSelf: 'stretch', aspectRatio: 1, borderTopLeftRadius: 32, borderTopRightRadius: 32, overflow: 'hidden' }, map: { flex: 1 }, mapFallback: { alignSelf: 'center', color: colors.disabled, marginTop: '48%', textAlign: 'center' }, mapLegend: { alignItems: 'center', bottom: 12, flexDirection: 'row', gap: 8, justifyContent: 'center', left: 12, position: 'absolute', right: 12 }, legendItem: { alignItems: 'center', backgroundColor: 'rgba(245,241,232,.94)', borderRadius: 12, flexDirection: 'row', gap: 6, paddingHorizontal: 9, paddingVertical: 7 }, workplaceDot: { backgroundColor: colors.primary, borderRadius: 5, height: 10, width: 10 }, currentLocationDot: { backgroundColor: '#5E7A68', borderRadius: 5, height: 10, width: 10 }, legendText: { color: colors.text, fontSize: 10, fontWeight: '600' }, locationDetails: { alignSelf: 'stretch', backgroundColor: '#FCFAF8', borderColor: '#E2DDD5', borderRadius: 18, borderWidth: 1, marginHorizontal: 24, marginTop: 16, overflow: 'hidden' }, timeRow: { alignItems: 'center', borderBottomColor: '#EAE5DE', borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 13 }, currentTime: { color: colors.text, fontSize: 27, fontWeight: '500' }, detailRow: { alignItems: 'center', borderBottomColor: '#EAE5DE', borderBottomWidth: 1, flexDirection: 'row', gap: 12, minHeight: 60, paddingHorizontal: 16 }, detailLabel: { color: colors.disabled, fontSize: 10, fontWeight: '700', letterSpacing: .5, marginBottom: 3 }, detailValue: { color: colors.text, fontSize: 13, fontWeight: '600' }, statusBadge: { alignItems: 'center', backgroundColor: '#E2EADF', borderRadius: 14, flexDirection: 'row', gap: 6, paddingHorizontal: 10, paddingVertical: 7 }, statusBadgeDenied: { backgroundColor: '#F1E3D8' }, statusText: { color: '#41634D', fontSize: 12, fontWeight: '600' }, statusTextDenied: { color: '#8A5D3D', fontSize: 12, fontWeight: '600' }, primaryButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 28, justifyContent: 'center', marginTop: 22, minHeight: 56, paddingHorizontal: 32, width: '100%' }, locationPrimaryButton: { alignSelf: 'stretch', marginHorizontal: 24, width: 'auto' }, buttonDisabled: { backgroundColor: '#A8A49C' }, primaryButtonText: { color: colors.background, fontSize: 15, fontWeight: '700' }, biometricCard: { alignItems: 'center', backgroundColor: '#FCFAF8', borderColor: '#D8D2C9', borderRadius: 24, borderWidth: 1, height: 210, justifyContent: 'center', width: 210 }, biometricCardConfirmed: { backgroundColor: '#E2EADF', borderColor: '#8FA795' }, biometricLabel: { color: colors.text, fontSize: 16, fontWeight: '600', marginTop: 14 }, nextLabel: { color: colors.disabled, fontSize: 13, marginVertical: 24 }, secondaryButton: { alignItems: 'center', borderColor: colors.primary, borderRadius: 28, borderWidth: 1, flexDirection: 'row', gap: 9, justifyContent: 'center', minHeight: 56, paddingHorizontal: 28 }, secondaryButtonDisabled: { borderColor: '#D8D2C9', opacity: .45 }, secondaryButtonText: { color: colors.primary, fontSize: 14, fontWeight: '700' }, scannerCard: { backgroundColor: '#1C1B18', borderRadius: 24, height: 300, overflow: 'hidden', width: '100%' }, camera: { flex: 1 }, scannerFrame: { borderColor: colors.background, borderRadius: 16, borderWidth: 2, height: 170, left: '18%', position: 'absolute', top: 65, width: '64%' }, permissionButton: { alignItems: 'center', backgroundColor: colors.background, borderRadius: 22, left: 60, padding: 16, position: 'absolute', right: 60, top: 120 }, scannerHelp: { color: colors.disabled, fontSize: 13, marginTop: 18, textAlign: 'center' }, successContent: { alignItems: 'center', flex: 1, justifyContent: 'center', paddingBottom: 46, width: '100%' }, successTitle: { color: colors.text, fontSize: 29, fontWeight: '600', marginTop: 18 }, recordTime: { color: colors.text, fontSize: 42, fontWeight: '500', marginTop: 32 }, recordDate: { color: colors.disabled, fontSize: 15, marginTop: 5, textTransform: 'capitalize' }, successWorkplace: { color: colors.text, fontSize: 17, fontWeight: '600', marginTop: 34 }, confirmation: { color: '#41634D', fontSize: 14, marginTop: 10 },
+  root: { flex: 1, backgroundColor: colors.primary }, header: { height: 128, justifyContent: 'space-between', paddingBottom: 24, paddingHorizontal: 18 }, headerRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingTop: 12 }, headerSpacer: { width: 27 }, brand: { color: colors.background, fontSize: 20, fontWeight: '600', letterSpacing: -.5 }, headerTitle: { color: colors.background, fontSize: 25, fontWeight: '500', textAlign: 'center' }, sheet: { backgroundColor: colors.background, borderTopLeftRadius: 40, borderTopRightRadius: 40, flex: 1 }, content: { alignItems: 'center', flexGrow: 1, paddingBottom: 42, paddingHorizontal: 24, paddingTop: 38 }, locationContent: { paddingHorizontal: 0, paddingTop: 0 }, title: { alignSelf: 'stretch', color: colors.text, fontSize: 27, fontWeight: '500', lineHeight: 34, marginBottom: 22, textAlign: 'center' }, mapCard: { alignSelf: 'stretch', aspectRatio: 1, borderTopLeftRadius: 32, borderTopRightRadius: 32, overflow: 'hidden' }, map: { flex: 1 }, mapFallback: { alignSelf: 'center', color: colors.disabled, marginTop: '48%', textAlign: 'center' }, mapLegend: { alignItems: 'center', bottom: 12, flexDirection: 'row', gap: 8, justifyContent: 'center', left: 12, position: 'absolute', right: 12 }, legendItem: { alignItems: 'center', backgroundColor: 'rgba(245,241,232,.94)', borderRadius: 12, flexDirection: 'row', gap: 6, paddingHorizontal: 9, paddingVertical: 7 }, workplaceDot: { backgroundColor: colors.primary, borderRadius: 5, height: 10, width: 10 }, currentLocationDot: { backgroundColor: '#5E7A68', borderRadius: 5, height: 10, width: 10 }, legendText: { color: colors.text, fontSize: 10, fontWeight: '600' }, locationDetails: { alignSelf: 'stretch', backgroundColor: '#FCFAF8', borderColor: '#E2DDD5', borderRadius: 18, borderWidth: 1, marginHorizontal: 24, marginTop: 16, overflow: 'hidden' }, timeRow: { alignItems: 'center', borderBottomColor: '#EAE5DE', borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 13 }, currentTime: { color: colors.text, fontSize: 27, fontWeight: '500' }, detailRow: { alignItems: 'center', borderBottomColor: '#EAE5DE', borderBottomWidth: 1, flexDirection: 'row', gap: 12, minHeight: 60, paddingHorizontal: 16 }, detailLabel: { color: colors.disabled, fontSize: 10, fontWeight: '700', letterSpacing: .5, marginBottom: 3 }, detailValue: { color: colors.text, fontSize: 13, fontWeight: '600' }, statusBadge: { alignItems: 'center', backgroundColor: '#E2EADF', borderRadius: 14, flexDirection: 'row', gap: 6, paddingHorizontal: 10, paddingVertical: 7 }, statusBadgeDenied: { backgroundColor: '#F1E3D8' }, statusText: { color: '#41634D', fontSize: 12, fontWeight: '600' }, statusTextDenied: { color: '#8A5D3D', fontSize: 12, fontWeight: '600' }, primaryButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 28, justifyContent: 'center', marginTop: 22, minHeight: 56, paddingHorizontal: 32, width: '100%' }, locationPrimaryButton: { alignSelf: 'stretch', marginHorizontal: 24, width: 'auto' }, buttonDisabled: { backgroundColor: '#A8A49C' }, primaryButtonText: { color: colors.background, fontSize: 15, fontWeight: '700' }, biometricCard: { alignItems: 'center', backgroundColor: '#FCFAF8', borderColor: '#D8D2C9', borderRadius: 24, borderWidth: 1, height: 210, justifyContent: 'center', width: 210 }, biometricCardConfirmed: { backgroundColor: '#E2EADF', borderColor: '#8FA795' }, biometricLabel: { color: colors.text, fontSize: 16, fontWeight: '600', marginTop: 14 }, nextLabel: { color: colors.disabled, fontSize: 13, marginVertical: 24 }, secondaryButton: { alignItems: 'center', borderColor: colors.primary, borderRadius: 28, borderWidth: 1, flexDirection: 'row', gap: 9, justifyContent: 'center', minHeight: 56, paddingHorizontal: 28 }, secondaryButtonDisabled: { borderColor: '#D8D2C9', opacity: .45 }, secondaryButtonText: { color: colors.primary, fontSize: 14, fontWeight: '700' }, scannerCard: { backgroundColor: '#1C1B18', borderRadius: 24, height: 300, overflow: 'hidden', width: '100%' }, camera: { flex: 1 }, scannerFrame: { borderColor: colors.background, borderRadius: 16, borderWidth: 2, height: 170, left: '18%', position: 'absolute', top: 65, width: '64%' }, permissionButton: { alignItems: 'center', backgroundColor: colors.background, borderRadius: 22, left: 60, padding: 16, position: 'absolute', right: 60, top: 120 }, scannerHelp: { color: colors.disabled, fontSize: 13, marginTop: 18, textAlign: 'center' },
   mapLegend: { alignItems: 'center', bottom: 10, flexDirection: 'row', gap: 5, justifyContent: 'flex-end', left: 12, position: 'absolute', right: 12 },
   legendItem: { alignItems: 'center', backgroundColor: 'rgba(245,241,232,.94)', borderRadius: 9, flexDirection: 'row', gap: 4, paddingHorizontal: 7, paddingVertical: 5 },
   workplaceDot: { backgroundColor: colors.primary, borderRadius: 4, height: 8, width: 8 },
@@ -314,4 +567,30 @@ const styles = StyleSheet.create({
   cameraOnlyPage: { alignSelf: 'stretch', backgroundColor: colors.primary, borderRadius: 40, flex: 0, overflow: 'hidden', position: 'relative' },
   cameraOnly: { flex: 1 },
   scannerFrame: { borderColor: colors.background, borderRadius: 16, borderWidth: 2, height: 220, left: '50%', position: 'absolute', top: '50%', transform: [{ translateX: -110 }, { translateY: -110 }], width: 220 },
+  confirmSlot: { alignItems: 'center', backgroundColor: '#FFFFFF', justifyContent: 'center', paddingVertical: 8, width: '36%' },
+  confirmSquare: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 12, height: 46, justifyContent: 'center', width: 46 },
+  confirmSquarePressed: { opacity: .8 },
+
+  // Tela de ponto confirmado
+  doneSheet: { backgroundColor: colors.primary, borderRadius: 0 },
+  doneContent: { flexGrow: 1, paddingBottom: 0, paddingHorizontal: 0, paddingTop: 0 },
+  doneStep: { alignItems: 'stretch', flex: 1 },
+  doneRoot: { flex: 1, width: '100%' },
+  doneTop: { flex: 1, paddingHorizontal: 28, paddingTop: 14 },
+  doneTopRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  doneBrand: { color: colors.background, fontSize: 20, fontWeight: '600', letterSpacing: -.5 },
+  donePill: { borderColor: '#44413B', borderRadius: 14, borderWidth: 1, maxWidth: '60%', paddingHorizontal: 12, paddingVertical: 6 },
+  donePillText: { color: '#D6A85F', fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  doneHero: { alignItems: 'flex-start', flex: 1, justifyContent: 'center', paddingBottom: 24 },
+  doneBadge: { alignItems: 'center', backgroundColor: colors.background, borderBottomLeftRadius: 12, borderBottomRightRadius: 26, borderTopLeftRadius: 26, borderTopRightRadius: 12, height: 64, justifyContent: 'center', marginBottom: 28, width: 64 },
+  doneEyebrow: { color: '#D6A85F', fontSize: 11, fontWeight: '700', letterSpacing: 1.6 },
+  doneTime: { color: colors.background, fontSize: 88, fontWeight: '600', letterSpacing: -4, lineHeight: 96, marginTop: 6 },
+  doneDate: { color: '#AAA49B', fontSize: 15, marginTop: 2, textTransform: 'capitalize' },
+  doneCard: { backgroundColor: colors.background, borderTopLeftRadius: 72, borderTopRightRadius: 24, paddingBottom: 44, paddingHorizontal: 28, paddingTop: 36 },
+  doneTitle: { color: colors.text, fontSize: 26, fontWeight: '600' },
+  doneSubtitle: { color: colors.disabled, fontSize: 13, marginTop: 6 },
+  doneChecks: { backgroundColor: '#FCFAF8', borderColor: '#E2DDD5', borderRadius: 16, borderWidth: 1, flexDirection: 'row', marginTop: 22, overflow: 'hidden' },
+  doneCheck: { alignItems: 'center', flex: 1, gap: 6, paddingVertical: 14 },
+  doneCheckBorder: { borderLeftColor: '#E2DDD5', borderLeftWidth: 1 },
+  doneCheckLabel: { color: colors.text, fontSize: 9, fontWeight: '700', letterSpacing: .6 },
 });
