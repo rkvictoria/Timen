@@ -6,7 +6,7 @@ import { useAuth } from '../hooks/useAuth';
 import { colors } from '../styles/colors';
 
 export default function ProfileView() {
-  const { user, logout, updateProfile, updateEmail, updateWorkplace, updatePassword, updatePhoto } = useAuth();
+  const { user, logout, updateProfile, updateEmail, updateWorkplace, updatePassword, updatePhoto, resetWorkplaceLocation } = useAuth();
 
   const [modalVisible, setModalVisible] = useState(null); // 'name', 'email', 'workplace', 'password'
   const [firstName, setFirstName] = useState(user?.firstName || '');
@@ -101,6 +101,23 @@ export default function ProfileView() {
     }
   };
 
+  const handleResetWorkplaceLocation = () => {
+    Alert.alert('Reiniciar local', 'Remover o local de trabalho marcado no mapa?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Reiniciar',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await resetWorkplaceLocation();
+          } catch (err) {
+            Alert.alert('Erro', err.message);
+          }
+        },
+      },
+    ]);
+  };
+
   return (
     <View style={styles.container}>
       <View style={styles.scrollView}>
@@ -170,6 +187,11 @@ export default function ProfileView() {
             </View>
             <Text style={styles.fullCardTitle}>Local de trabalho</Text>
             <Ionicons name="arrow-up-right" size={20} color={colors.background} />
+          </Pressable>
+
+          <Pressable style={styles.resetButton} onPress={handleResetWorkplaceLocation}>
+            <Ionicons name="refresh-outline" size={16} color={colors.disabled} />
+            <Text style={styles.resetButtonText}>Reiniciar local no mapa</Text>
           </Pressable>
 
         </View>
@@ -430,6 +452,18 @@ const styles = StyleSheet.create({
     fontSize: 14,
     fontWeight: '600',
     color: colors.background,
+  },
+  resetButton: {
+    alignItems: 'center',
+    alignSelf: 'center',
+    flexDirection: 'row',
+    gap: 6,
+    paddingVertical: 8,
+  },
+  resetButtonText: {
+    color: colors.disabled,
+    fontSize: 12,
+    fontWeight: '600',
   },
   modalOverlay: {
     flex: 1,

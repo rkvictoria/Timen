@@ -16,6 +16,15 @@ export async function getTodayPoints() {
   return pointsByDate[todayKey()] || {};
 }
 
+export async function getAllPoints() {
+  const storedPoints = await AsyncStorage.getItem(STORAGE_KEYS.POINTS);
+  const pointsByDate = storedPoints ? JSON.parse(storedPoints) : {};
+  return Object.keys(pointsByDate)
+    .sort()
+    .reverse()
+    .map((date) => ({ date, points: pointsByDate[date] }));
+}
+
 export async function savePoint(type) {
   const storedPoints = await AsyncStorage.getItem(STORAGE_KEYS.POINTS);
   const pointsByDate = storedPoints ? JSON.parse(storedPoints) : {};
@@ -34,4 +43,4 @@ export function getNextPointType(points) {
   return pointOrder.find((type) => !points[type]) || null;
 }
 
-export { pointOrder };
+export { todayKey, pointOrder };

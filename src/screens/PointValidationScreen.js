@@ -13,6 +13,13 @@ import { useAuth } from '../hooks/useAuth';
 
 const FALLBACK_REGION = { latitude: -22.9068, longitude: -43.1729 };
 
+const successCopy = {
+  entry: { label: 'ENTRADA REGISTRADA', title: 'Bora trabalhar.' },
+  break: { label: 'INTERVALO INICIADO', title: 'Café merecido.' },
+  return: { label: 'RETORNO REGISTRADO', title: 'De volta ao jogo.' },
+  exit: { label: 'SAÍDA REGISTRADA', title: 'Missão cumprida.' },
+};
+
 function distanceInMeters(from, to) {
   const earthRadius = 6371000;
   const toRadians = (value) => (value * Math.PI) / 180;
@@ -34,6 +41,8 @@ export default function PointValidationScreen({ navigation, route }) {
   const stepScale = useRef(new Animated.Value(0.9)).current;
   const identityFillAnimation = useRef(new Animated.Value(0)).current;
   const qrButtonAnimation = useRef(new Animated.Value(0)).current;
+  const successBadge = useRef(new Animated.Value(0)).current;
+  const successReveal = useRef(new Animated.Value(0)).current;
   const scanLocked = useRef(false);
   
   const [currentLocation, setCurrentLocation] = useState(null);
@@ -61,6 +70,16 @@ export default function PointValidationScreen({ navigation, route }) {
       Animated.spring(stepScale, { toValue: 1, friction: 8, tension: 85, useNativeDriver: true }),
     ]).start();
   }, [stepOpacity, stepScale]);
+
+  useEffect(() => {
+    if (step !== 'success') return;
+    successBadge.setValue(0);
+    successReveal.setValue(0);
+    Animated.parallel([
+      Animated.spring(successBadge, { toValue: 1, friction: 5, tension: 80, useNativeDriver: true }),
+      Animated.timing(successReveal, { toValue: 1, duration: 1100, delay: 200, useNativeDriver: true }),
+    ]).start();
+  }, [step, successBadge, successReveal]);
 
   useEffect(() => {
     async function loadLocation() {
@@ -238,6 +257,7 @@ export default function PointValidationScreen({ navigation, route }) {
       ? { ...currentLocation, latitudeDelta: 0.01, longitudeDelta: 0.01 }
       : { ...FALLBACK_REGION, latitudeDelta: 0.05, longitudeDelta: 0.05 };
   const setupRadiusValue = Number(radiusInput) || 0;
+  const setupConfirmDisabled = !selectedSetupCoords || isSavingLocation;
 
   // Render da Primeira Página (Setup)
   const renderSetup = () => (
@@ -272,7 +292,17 @@ export default function PointValidationScreen({ navigation, route }) {
         </View>
       </View>
       <View style={styles.timeRow}>
-        <Text style={styles.currentTime}>{selectedSetupCoords ? '📍' : '—'}</Text>
+        <View style={styles.confirmSlot}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Salvar local de trabalho"
+            disabled={setupConfirmDisabled}
+            onPress={handleSaveSetupLocation}
+            style={({ pressed }) => [styles.confirmSquare, setupConfirmDisabled && styles.buttonDisabled, pressed && styles.confirmSquarePressed]}
+          >
+            {isSavingLocation ? <ActivityIndicator color={colors.background} /> : <Ionicons name="checkmark" size={26} color={colors.background} />}
+          </Pressable>
+        </View>
         <View style={styles.statusBadge}>
           <Ionicons name={selectedSetupCoords ? 'checkmark' : 'information'} size={17} color={colors.background} />
           <Text style={styles.statusText}>{selectedSetupCoords ? 'Toque e arraste para ajustar' : 'Toque no mapa para marcar o local'}</Text>
@@ -303,17 +333,10 @@ export default function PointValidationScreen({ navigation, route }) {
           />
         </View>
       </View>
-      <Pressable
-        disabled={!selectedSetupCoords || isSavingLocation}
-        style={[styles.primaryButton, styles.locationPrimaryButton, (!selectedSetupCoords || isSavingLocation) && styles.buttonDisabled]}
-        onPress={handleSaveSetupLocation}
-      >
-        {isSavingLocation ? <ActivityIndicator color={colors.background} /> : <Text style={styles.primaryButtonText}>Salvar local de trabalho</Text>}
-      </Pressable>
     </>
   );
 
-  // Render da Segunda Página (mantido exatamente do seu código)
+  // Render da Segunda Página
   const renderLocation = () => (
     <>
       <View style={styles.mapCard}>
@@ -360,19 +383,70 @@ export default function PointValidationScreen({ navigation, route }) {
     </View>
   );
 
-  const renderSuccess = () => (
-    <View style={styles.successContent}>
-      <Ionicons name="checkmark" size={52} color="#41634D" />
-      <Text style={styles.successTitle}>Ponto registrado.</Text>
-      <Text style={styles.recordTime}>{recordedAt?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}</Text>
-      <Text style={styles.recordDate}>{recordedAt?.toLocaleDateString('pt-BR', { day: '2-digit', month: 'long' })}</Text>
-      <Text style={styles.successWorkplace}>{workplace.name}</Text>
-      <Text style={styles.confirmation}>✓ Local confirmado</Text>
-      <Text style={styles.confirmation}>✓ Identidade confirmada</Text>
-      <Text style={styles.confirmation}>✓ QR Code confirmado</Text>
-      <Pressable style={styles.primaryButton} onPress={() => navigation.popToTop()}><Text style={styles.primaryButtonText}>Voltar ao início</Text></Pressable>
-    </View>
-  );
+  const renderSuccess = () => {
+    const copy = successCopy[route.params?.pointType] || successCopy.entry;
+    const reveal = (start, end, distanceY = 18) => ({
+      opacity: successReveal.interpolate({ inputRange: [start, end], outputRange: [0, 1], extrapolate: 'clamp' }),
+      transform: [{ translateY: successReveal.interpolate({ inputRange: [start, end], outputRange: [distanceY, 0], extrapolate: 'clamp' }) }],
+    });
+
+    return (
+      <View style={styles.doneRoot}>
+        <View style={styles.doneTop}>
+          <View style={styles.doneTopRow}>
+            <Text style={styles.doneBrand}>Timen.</Text>
+            <View style={styles.donePill}>
+              <Text style={styles.donePillText} numberOfLines={1}>{workplace.name}</Text>
+            </View>
+          </View>
+
+          <View style={styles.doneHero}>
+            <Animated.View
+              style={[
+                styles.doneBadge,
+                {
+                  opacity: successBadge.interpolate({ inputRange: [0, 0.3], outputRange: [0, 1], extrapolate: 'clamp' }),
+                  transform: [
+                    { scale: successBadge },
+                    { rotate: successBadge.interpolate({ inputRange: [0, 1], outputRange: ['-24deg', '0deg'] }) },
+                  ],
+                },
+              ]}
+            >
+              <Ionicons name="checkmark" size={34} color={colors.primary} />
+            </Animated.View>
+            <Animated.Text style={[styles.doneEyebrow, reveal(0, 0.4)]}>{copy.label}</Animated.Text>
+            <Animated.Text style={[styles.doneTime, reveal(0.1, 0.55)]}>
+              {recordedAt?.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' })}
+            </Animated.Text>
+            <Animated.Text style={[styles.doneDate, reveal(0.25, 0.65)]}>
+              {recordedAt?.toLocaleDateString('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' })}
+            </Animated.Text>
+          </View>
+        </View>
+
+        <Animated.View style={[styles.doneCard, reveal(0.4, 0.85, 40)]}>
+          <Text style={styles.doneTitle}>{copy.title}</Text>
+          <Text style={styles.doneSubtitle}>Tudo validado. Pode seguir com o dia.</Text>
+
+          <Animated.View style={[styles.doneChecks, reveal(0.6, 0.9)]}>
+            {['Local', 'Identidade', 'QR Code'].map((label, index) => (
+              <View key={label} style={[styles.doneCheck, index > 0 && styles.doneCheckBorder]}>
+                <Ionicons name="checkmark-circle" size={20} color="#5E7A68" />
+                <Text style={styles.doneCheckLabel}>{label.toUpperCase()}</Text>
+              </View>
+            ))}
+          </Animated.View>
+
+          <Animated.View style={reveal(0.75, 1)}>
+            <Pressable style={styles.primaryButton} onPress={() => navigation.popToTop()}>
+              <Text style={styles.primaryButtonText}>Voltar ao início</Text>
+            </Pressable>
+          </Animated.View>
+        </Animated.View>
+      </View>
+    );
+  };
 
   // Se não tem local salvo, exibe a Primeira Página (Setup)
   if (!hasWorkplaceLocation) {
@@ -409,7 +483,7 @@ export default function PointValidationScreen({ navigation, route }) {
   return (
     <SafeAreaView style={[styles.root, step === 'identity' && styles.identityRoot, identityFullscreen && styles.identityFullscreenRoot]} edges={['top']}>
       <StatusBar style={step === 'identity' && !identityFullscreen ? 'dark' : 'light'} />
-      <View style={[styles.header, step === 'identity' && styles.identityHeader, identityFullscreen && styles.hiddenHeader]}>
+      <View style={[styles.header, step === 'identity' && styles.identityHeader, (identityFullscreen || step === 'success') && styles.hiddenHeader]}>
         <View style={styles.headerRow}>
           <Pressable accessibilityRole="button" accessibilityLabel="Voltar" onPress={() => navigation.goBack()}>
             <Animated.View style={{ transform: [{ translateX: backArrowOffset }] }}>
@@ -422,8 +496,8 @@ export default function PointValidationScreen({ navigation, route }) {
         {step === 'location' && <Text style={styles.headerTitle}>Aonde você está?</Text>}
         {step === 'identity' && <Text style={styles.identityHeaderTitle}>Por favor, confirme que é você.</Text>}
       </View>
-      <ScrollView style={[styles.sheet, step === 'identity' && styles.identitySheet, step === 'scan' && styles.cameraPage, identityFullscreen && styles.fullscreenIdentitySheet]} contentContainerStyle={[styles.content, step === 'location' && styles.locationContent, step === 'identity' && styles.identityContent, step === 'scan' && styles.cameraContent]} scrollEnabled={step !== 'location' && step !== 'identity' && step !== 'scan'} showsVerticalScrollIndicator={false}>
-        <Animated.View style={[styles.stepContent, { opacity: stepOpacity, transform: [{ scale: stepScale }] }]}>
+      <ScrollView style={[styles.sheet, step === 'identity' && styles.identitySheet, step === 'scan' && styles.cameraPage, identityFullscreen && styles.fullscreenIdentitySheet, step === 'success' && styles.doneSheet]} contentContainerStyle={[styles.content, step === 'location' && styles.locationContent, step === 'identity' && styles.identityContent, step === 'scan' && styles.cameraContent, step === 'success' && styles.doneContent]} scrollEnabled={step !== 'location' && step !== 'identity' && step !== 'scan' && step !== 'success'} showsVerticalScrollIndicator={false}>
+        <Animated.View style={[styles.stepContent, step === 'success' && styles.doneStep, { opacity: stepOpacity, transform: [{ scale: stepScale }] }]}>
           {step === 'location' && renderLocation()}
           {step === 'identity' && renderIdentity()}
           {step === 'scan' && renderScanner()}
@@ -436,7 +510,7 @@ export default function PointValidationScreen({ navigation, route }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.primary }, header: { height: 128, justifyContent: 'space-between', paddingBottom: 24, paddingHorizontal: 18 }, headerRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingTop: 12 }, headerSpacer: { width: 27 }, brand: { color: colors.background, fontSize: 20, fontWeight: '600', letterSpacing: -.5 }, headerTitle: { color: colors.background, fontSize: 25, fontWeight: '500', textAlign: 'center' }, sheet: { backgroundColor: colors.background, borderTopLeftRadius: 40, borderTopRightRadius: 40, flex: 1 }, content: { alignItems: 'center', flexGrow: 1, paddingBottom: 42, paddingHorizontal: 24, paddingTop: 38 }, locationContent: { paddingHorizontal: 0, paddingTop: 0 }, title: { alignSelf: 'stretch', color: colors.text, fontSize: 27, fontWeight: '500', lineHeight: 34, marginBottom: 22, textAlign: 'center' }, mapCard: { alignSelf: 'stretch', aspectRatio: 1, borderTopLeftRadius: 32, borderTopRightRadius: 32, overflow: 'hidden' }, map: { flex: 1 }, mapFallback: { alignSelf: 'center', color: colors.disabled, marginTop: '48%', textAlign: 'center' }, mapLegend: { alignItems: 'center', bottom: 12, flexDirection: 'row', gap: 8, justifyContent: 'center', left: 12, position: 'absolute', right: 12 }, legendItem: { alignItems: 'center', backgroundColor: 'rgba(245,241,232,.94)', borderRadius: 12, flexDirection: 'row', gap: 6, paddingHorizontal: 9, paddingVertical: 7 }, workplaceDot: { backgroundColor: colors.primary, borderRadius: 5, height: 10, width: 10 }, currentLocationDot: { backgroundColor: '#5E7A68', borderRadius: 5, height: 10, width: 10 }, legendText: { color: colors.text, fontSize: 10, fontWeight: '600' }, locationDetails: { alignSelf: 'stretch', backgroundColor: '#FCFAF8', borderColor: '#E2DDD5', borderRadius: 18, borderWidth: 1, marginHorizontal: 24, marginTop: 16, overflow: 'hidden' }, timeRow: { alignItems: 'center', borderBottomColor: '#EAE5DE', borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 13 }, currentTime: { color: colors.text, fontSize: 27, fontWeight: '500' }, detailRow: { alignItems: 'center', borderBottomColor: '#EAE5DE', borderBottomWidth: 1, flexDirection: 'row', gap: 12, minHeight: 60, paddingHorizontal: 16 }, detailLabel: { color: colors.disabled, fontSize: 10, fontWeight: '700', letterSpacing: .5, marginBottom: 3 }, detailValue: { color: colors.text, fontSize: 13, fontWeight: '600' }, statusBadge: { alignItems: 'center', backgroundColor: '#E2EADF', borderRadius: 14, flexDirection: 'row', gap: 6, paddingHorizontal: 10, paddingVertical: 7 }, statusBadgeDenied: { backgroundColor: '#F1E3D8' }, statusText: { color: '#41634D', fontSize: 12, fontWeight: '600' }, statusTextDenied: { color: '#8A5D3D', fontSize: 12, fontWeight: '600' }, primaryButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 28, justifyContent: 'center', marginTop: 22, minHeight: 56, paddingHorizontal: 32, width: '100%' }, locationPrimaryButton: { alignSelf: 'stretch', marginHorizontal: 24, width: 'auto' }, buttonDisabled: { backgroundColor: '#A8A49C' }, primaryButtonText: { color: colors.background, fontSize: 15, fontWeight: '700' }, biometricCard: { alignItems: 'center', backgroundColor: '#FCFAF8', borderColor: '#D8D2C9', borderRadius: 24, borderWidth: 1, height: 210, justifyContent: 'center', width: 210 }, biometricCardConfirmed: { backgroundColor: '#E2EADF', borderColor: '#8FA795' }, biometricLabel: { color: colors.text, fontSize: 16, fontWeight: '600', marginTop: 14 }, nextLabel: { color: colors.disabled, fontSize: 13, marginVertical: 24 }, secondaryButton: { alignItems: 'center', borderColor: colors.primary, borderRadius: 28, borderWidth: 1, flexDirection: 'row', gap: 9, justifyContent: 'center', minHeight: 56, paddingHorizontal: 28 }, secondaryButtonDisabled: { borderColor: '#D8D2C9', opacity: .45 }, secondaryButtonText: { color: colors.primary, fontSize: 14, fontWeight: '700' }, scannerCard: { backgroundColor: '#1C1B18', borderRadius: 24, height: 300, overflow: 'hidden', width: '100%' }, camera: { flex: 1 }, scannerFrame: { borderColor: colors.background, borderRadius: 16, borderWidth: 2, height: 170, left: '18%', position: 'absolute', top: 65, width: '64%' }, permissionButton: { alignItems: 'center', backgroundColor: colors.background, borderRadius: 22, left: 60, padding: 16, position: 'absolute', right: 60, top: 120 }, scannerHelp: { color: colors.disabled, fontSize: 13, marginTop: 18, textAlign: 'center' }, successContent: { alignItems: 'center', flex: 1, justifyContent: 'center', paddingBottom: 46, width: '100%' }, successTitle: { color: colors.text, fontSize: 29, fontWeight: '600', marginTop: 18 }, recordTime: { color: colors.text, fontSize: 42, fontWeight: '500', marginTop: 32 }, recordDate: { color: colors.disabled, fontSize: 15, marginTop: 5, textTransform: 'capitalize' }, successWorkplace: { color: colors.text, fontSize: 17, fontWeight: '600', marginTop: 34 }, confirmation: { color: '#41634D', fontSize: 14, marginTop: 10 },
+  root: { flex: 1, backgroundColor: colors.primary }, header: { height: 128, justifyContent: 'space-between', paddingBottom: 24, paddingHorizontal: 18 }, headerRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', paddingTop: 12 }, headerSpacer: { width: 27 }, brand: { color: colors.background, fontSize: 20, fontWeight: '600', letterSpacing: -.5 }, headerTitle: { color: colors.background, fontSize: 25, fontWeight: '500', textAlign: 'center' }, sheet: { backgroundColor: colors.background, borderTopLeftRadius: 40, borderTopRightRadius: 40, flex: 1 }, content: { alignItems: 'center', flexGrow: 1, paddingBottom: 42, paddingHorizontal: 24, paddingTop: 38 }, locationContent: { paddingHorizontal: 0, paddingTop: 0 }, title: { alignSelf: 'stretch', color: colors.text, fontSize: 27, fontWeight: '500', lineHeight: 34, marginBottom: 22, textAlign: 'center' }, mapCard: { alignSelf: 'stretch', aspectRatio: 1, borderTopLeftRadius: 32, borderTopRightRadius: 32, overflow: 'hidden' }, map: { flex: 1 }, mapFallback: { alignSelf: 'center', color: colors.disabled, marginTop: '48%', textAlign: 'center' }, mapLegend: { alignItems: 'center', bottom: 12, flexDirection: 'row', gap: 8, justifyContent: 'center', left: 12, position: 'absolute', right: 12 }, legendItem: { alignItems: 'center', backgroundColor: 'rgba(245,241,232,.94)', borderRadius: 12, flexDirection: 'row', gap: 6, paddingHorizontal: 9, paddingVertical: 7 }, workplaceDot: { backgroundColor: colors.primary, borderRadius: 5, height: 10, width: 10 }, currentLocationDot: { backgroundColor: '#5E7A68', borderRadius: 5, height: 10, width: 10 }, legendText: { color: colors.text, fontSize: 10, fontWeight: '600' }, locationDetails: { alignSelf: 'stretch', backgroundColor: '#FCFAF8', borderColor: '#E2DDD5', borderRadius: 18, borderWidth: 1, marginHorizontal: 24, marginTop: 16, overflow: 'hidden' }, timeRow: { alignItems: 'center', borderBottomColor: '#EAE5DE', borderBottomWidth: 1, flexDirection: 'row', justifyContent: 'space-between', paddingHorizontal: 16, paddingVertical: 13 }, currentTime: { color: colors.text, fontSize: 27, fontWeight: '500' }, detailRow: { alignItems: 'center', borderBottomColor: '#EAE5DE', borderBottomWidth: 1, flexDirection: 'row', gap: 12, minHeight: 60, paddingHorizontal: 16 }, detailLabel: { color: colors.disabled, fontSize: 10, fontWeight: '700', letterSpacing: .5, marginBottom: 3 }, detailValue: { color: colors.text, fontSize: 13, fontWeight: '600' }, statusBadge: { alignItems: 'center', backgroundColor: '#E2EADF', borderRadius: 14, flexDirection: 'row', gap: 6, paddingHorizontal: 10, paddingVertical: 7 }, statusBadgeDenied: { backgroundColor: '#F1E3D8' }, statusText: { color: '#41634D', fontSize: 12, fontWeight: '600' }, statusTextDenied: { color: '#8A5D3D', fontSize: 12, fontWeight: '600' }, primaryButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 28, justifyContent: 'center', marginTop: 22, minHeight: 56, paddingHorizontal: 32, width: '100%' }, locationPrimaryButton: { alignSelf: 'stretch', marginHorizontal: 24, width: 'auto' }, buttonDisabled: { backgroundColor: '#A8A49C' }, primaryButtonText: { color: colors.background, fontSize: 15, fontWeight: '700' }, biometricCard: { alignItems: 'center', backgroundColor: '#FCFAF8', borderColor: '#D8D2C9', borderRadius: 24, borderWidth: 1, height: 210, justifyContent: 'center', width: 210 }, biometricCardConfirmed: { backgroundColor: '#E2EADF', borderColor: '#8FA795' }, biometricLabel: { color: colors.text, fontSize: 16, fontWeight: '600', marginTop: 14 }, nextLabel: { color: colors.disabled, fontSize: 13, marginVertical: 24 }, secondaryButton: { alignItems: 'center', borderColor: colors.primary, borderRadius: 28, borderWidth: 1, flexDirection: 'row', gap: 9, justifyContent: 'center', minHeight: 56, paddingHorizontal: 28 }, secondaryButtonDisabled: { borderColor: '#D8D2C9', opacity: .45 }, secondaryButtonText: { color: colors.primary, fontSize: 14, fontWeight: '700' }, scannerCard: { backgroundColor: '#1C1B18', borderRadius: 24, height: 300, overflow: 'hidden', width: '100%' }, camera: { flex: 1 }, scannerFrame: { borderColor: colors.background, borderRadius: 16, borderWidth: 2, height: 170, left: '18%', position: 'absolute', top: 65, width: '64%' }, permissionButton: { alignItems: 'center', backgroundColor: colors.background, borderRadius: 22, left: 60, padding: 16, position: 'absolute', right: 60, top: 120 }, scannerHelp: { color: colors.disabled, fontSize: 13, marginTop: 18, textAlign: 'center' },
   mapLegend: { alignItems: 'center', bottom: 10, flexDirection: 'row', gap: 5, justifyContent: 'flex-end', left: 12, position: 'absolute', right: 12 },
   legendItem: { alignItems: 'center', backgroundColor: 'rgba(245,241,232,.94)', borderRadius: 9, flexDirection: 'row', gap: 4, paddingHorizontal: 7, paddingVertical: 5 },
   workplaceDot: { backgroundColor: colors.primary, borderRadius: 4, height: 8, width: 8 },
@@ -493,4 +567,30 @@ const styles = StyleSheet.create({
   cameraOnlyPage: { alignSelf: 'stretch', backgroundColor: colors.primary, borderRadius: 40, flex: 0, overflow: 'hidden', position: 'relative' },
   cameraOnly: { flex: 1 },
   scannerFrame: { borderColor: colors.background, borderRadius: 16, borderWidth: 2, height: 220, left: '50%', position: 'absolute', top: '50%', transform: [{ translateX: -110 }, { translateY: -110 }], width: 220 },
+  confirmSlot: { alignItems: 'center', backgroundColor: '#FFFFFF', justifyContent: 'center', paddingVertical: 8, width: '36%' },
+  confirmSquare: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 12, height: 46, justifyContent: 'center', width: 46 },
+  confirmSquarePressed: { opacity: .8 },
+
+  // Tela de ponto confirmado
+  doneSheet: { backgroundColor: colors.primary, borderRadius: 0 },
+  doneContent: { flexGrow: 1, paddingBottom: 0, paddingHorizontal: 0, paddingTop: 0 },
+  doneStep: { alignItems: 'stretch', flex: 1 },
+  doneRoot: { flex: 1, width: '100%' },
+  doneTop: { flex: 1, paddingHorizontal: 28, paddingTop: 14 },
+  doneTopRow: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between' },
+  doneBrand: { color: colors.background, fontSize: 20, fontWeight: '600', letterSpacing: -.5 },
+  donePill: { borderColor: '#44413B', borderRadius: 14, borderWidth: 1, maxWidth: '60%', paddingHorizontal: 12, paddingVertical: 6 },
+  donePillText: { color: '#D6A85F', fontSize: 10, fontWeight: '700', letterSpacing: 1, textTransform: 'uppercase' },
+  doneHero: { alignItems: 'flex-start', flex: 1, justifyContent: 'center', paddingBottom: 24 },
+  doneBadge: { alignItems: 'center', backgroundColor: colors.background, borderBottomLeftRadius: 12, borderBottomRightRadius: 26, borderTopLeftRadius: 26, borderTopRightRadius: 12, height: 64, justifyContent: 'center', marginBottom: 28, width: 64 },
+  doneEyebrow: { color: '#D6A85F', fontSize: 11, fontWeight: '700', letterSpacing: 1.6 },
+  doneTime: { color: colors.background, fontSize: 88, fontWeight: '600', letterSpacing: -4, lineHeight: 96, marginTop: 6 },
+  doneDate: { color: '#AAA49B', fontSize: 15, marginTop: 2, textTransform: 'capitalize' },
+  doneCard: { backgroundColor: colors.background, borderTopLeftRadius: 72, borderTopRightRadius: 24, paddingBottom: 44, paddingHorizontal: 28, paddingTop: 36 },
+  doneTitle: { color: colors.text, fontSize: 26, fontWeight: '600' },
+  doneSubtitle: { color: colors.disabled, fontSize: 13, marginTop: 6 },
+  doneChecks: { backgroundColor: '#FCFAF8', borderColor: '#E2DDD5', borderRadius: 16, borderWidth: 1, flexDirection: 'row', marginTop: 22, overflow: 'hidden' },
+  doneCheck: { alignItems: 'center', flex: 1, gap: 6, paddingVertical: 14 },
+  doneCheckBorder: { borderLeftColor: '#E2DDD5', borderLeftWidth: 1 },
+  doneCheckLabel: { color: colors.text, fontSize: 9, fontWeight: '700', letterSpacing: .6 },
 });

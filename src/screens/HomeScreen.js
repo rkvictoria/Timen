@@ -6,6 +6,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { useAuth } from '../hooks/useAuth';
 import { colors } from '../styles/colors';
 import ProfileView from '../components/ProfileView';
+import HistoryView from '../components/HistoryView';
 import { getNextPointType, getTodayPoints } from '../services/pointService';
 
 const tabs = ['home', 'history', 'register', 'profile'];
@@ -160,6 +161,8 @@ export default function HomeScreen({ navigation }) {
       <Animated.View style={[styles.tabContent, { opacity: contentOpacity, transform: [{ scale: contentScale }] }]}>
         {activeTab === 'profile' ? (
           <ProfileView />
+        ) : activeTab === 'history' ? (
+          <HistoryView />
         ) : (
           <>
             <View style={styles.darkHeader}>
@@ -242,7 +245,6 @@ const styles = StyleSheet.create({
   mainNavItem: { alignItems: 'center', backgroundColor: colors.background, borderRadius: 14, height: 50, justifyContent: 'center', width: 50, zIndex: 1 }, mainNavItemActive: { transform: [{ scale: 1.04 }] },
   greetingBlock: { marginBottom: 26 }, greeting: { color: colors.text, fontSize: 28, lineHeight: 34 }, name: { color: colors.text, fontSize: 28, fontWeight: '600', lineHeight: 34 }, date: { color: colors.disabled, fontSize: 13, marginTop: 8, textTransform: 'capitalize' },
   journeyCard: { alignItems: 'center', backgroundColor: '#FCFAF8', borderColor: '#E2DDD5', borderRadius: 18, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14, padding: 18 }, eyebrow: { color: colors.disabled, fontSize: 10, fontWeight: '700', letterSpacing: .8, marginBottom: 5 }, journeyTitle: { color: colors.text, fontSize: 17, fontWeight: '600' }, hoursBlock: { alignItems: 'flex-end' }, hours: { color: colors.text, fontSize: 18, fontWeight: '700' }, hoursLabel: { color: colors.disabled, fontSize: 11, marginTop: 2 },
-  registerButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 18, flexDirection: 'row', justifyContent: 'space-between', marginBottom: 32, paddingHorizontal: 20, paddingVertical: 18 }, pressed: { opacity: .84 }, registerText: { color: colors.background, fontSize: 17, fontWeight: '700' }, registerHint: { color: '#D8D2C9', fontSize: 11, marginTop: 4 }, arrow: { color: colors.background, fontSize: 29 },
   registerButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 18, flexDirection: 'row', justifyContent: 'space-between', marginBottom: 32, paddingHorizontal: 20, paddingVertical: 18 }, pressed: { opacity: .84 }, registerText: { color: colors.background, fontSize: 17, fontWeight: '700' }, registerHint: { color: '#D8D2C9', fontSize: 11, marginTop: 4 }, arrow: { color: colors.background, fontSize: 29 },
   sectionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }, sectionTitle: { color: colors.text, fontSize: 17, fontWeight: '600' }, live: { alignItems: 'center', backgroundColor: '#E9E4DC', borderRadius: 10, flexDirection: 'row', gap: 5, paddingHorizontal: 8, paddingVertical: 5 }, liveDot: { backgroundColor: '#5E7A68', borderRadius: 4, height: 7, width: 7 }, liveText: { color: '#5E7A68', fontSize: 9, fontWeight: '700', letterSpacing: .7 },
   todayCard: { alignSelf: 'flex-end', backgroundColor: colors.primary, borderBottomLeftRadius: 72, borderBottomRightRadius: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16, marginBottom: 16, marginRight: -4, marginTop: 4, overflow: 'hidden', padding: 15, width: '92%' }, todayHeader: { alignItems: 'center', alignSelf: 'flex-end', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, paddingLeft: 0, width: '88%' }, todayEyebrow: { color: '#AAA49B', fontSize: 9, fontWeight: '700', letterSpacing: 1, marginBottom: 2 }, todayTitle: { color: colors.background, fontSize: 22, fontWeight: '600' }, todayCount: { alignItems: 'flex-end' }, todayCountValue: { color: colors.background, fontSize: 15, fontWeight: '700' }, todayCountLabel: { color: '#AAA49B', fontSize: 9, marginTop: 1 }, todayTable: { alignSelf: 'flex-end', backgroundColor: '#292824', borderRadius: 15, overflow: 'hidden', paddingHorizontal: 10, width: '88%' }, todayRow: { alignItems: 'center', flexDirection: 'row', minHeight: 42 }, todayRowBorder: { borderBottomColor: '#44413B', borderBottomWidth: 1 }, todayDot: { backgroundColor: '#A9C9B0', borderRadius: 4, height: 7, marginRight: 10, width: 7 }, todayDotPending: { backgroundColor: '#77736D' }, todayLabel: { color: '#E8E2D8', flex: 1, fontSize: 12 }, todayTime: { color: colors.background, fontSize: 13, fontWeight: '700', marginRight: 12 }, todayTimePending: { color: '#77736D' },
