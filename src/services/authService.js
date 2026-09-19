@@ -175,6 +175,21 @@ export const authService = {
     }
   },
 
+  async resetWorkplaceLocation() {
+    const stored = await AsyncStorage.getItem(STORAGE_KEYS.CREDENTIALS);
+    if (!stored) throw new Error('Credenciais não encontradas.');
+    const credentials = JSON.parse(stored);
+    credentials.workplaceLocation = null;
+    await AsyncStorage.setItem(STORAGE_KEYS.CREDENTIALS, JSON.stringify(credentials));
+
+    const session = await this.getSession();
+    if (session) {
+      session.workplaceLocation = null;
+      await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
+      return session;
+    }
+  },
+
   async updatePassword(currentPassword, newPassword) {
     const stored = await AsyncStorage.getItem(STORAGE_KEYS.CREDENTIALS);
     if (!stored) throw new Error('Credenciais não encontradas.');
