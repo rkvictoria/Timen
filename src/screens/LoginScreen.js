@@ -22,6 +22,7 @@ export default function LoginScreen() {
   const [loginSenha, setLoginSenha] = useState('');
   const [cadastroNome, setCadastroNome] = useState('');
   const [cadastroSobrenome, setCadastroSobrenome] = useState('');
+  const [cadastroWorkplace, setCadastroWorkplace] = useState('');
   const [cadastroEmail, setCadastroEmail] = useState('');
   const [cadastroSenha, setCadastroSenha] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -49,10 +50,11 @@ export default function LoginScreen() {
     setIsSubmitting(true);
     try {
       if (mode === 'cadastro') {
-        await register(cadastroNome, cadastroSobrenome, cadastroEmail, cadastroSenha);
+        await register(cadastroNome, cadastroSobrenome, cadastroEmail, cadastroSenha, cadastroWorkplace);
         setMode('login');
         setCadastroNome('');
         setCadastroSobrenome('');
+        setCadastroWorkplace('');
         setCadastroSenha('');
         setErrorMessage('Cadastro realizado. Faça login.');
       } else {
@@ -151,6 +153,19 @@ export default function LoginScreen() {
                       textContentType="familyName"
                     />
                   </View>
+                </View>
+              )}
+              {mode === 'cadastro' && (
+                <View style={styles.field}>
+                  <Text style={styles.label}>LOCAL DE TRABALHO</Text>
+                  <TextInput
+                    style={styles.input}
+                    placeholder="Nome da empresa ou local"
+                    placeholderTextColor={colors.disabled}
+                    value={cadastroWorkplace}
+                    onChangeText={setCadastroWorkplace}
+                    autoCapitalize="words"
+                  />
                 </View>
               )}
               <View style={styles.field}>

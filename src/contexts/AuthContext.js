@@ -21,8 +21,8 @@ export function AuthProvider({ children }) {
     setUser(session);
   }, []);
 
-  const register = useCallback(async (email, password) => {
-    await authService.register(email, password);
+  const register = useCallback(async (firstName, lastName, email, password, workplace) => {
+    await authService.register(firstName, lastName, email, password, workplace);
   }, []);
 
   const logout = useCallback(async () => {
@@ -40,6 +40,21 @@ export function AuthProvider({ children }) {
     setUser(session);
   }, []);
 
+  const updateWorkplace = useCallback(async (workplace) => {
+    const session = await authService.updateWorkplace(workplace);
+    setUser(session);
+  }, []);
+
+  const updateWorkplaceLocation = useCallback(async (latitude, longitude, allowedRadius) => {
+    const session = await authService.updateWorkplaceLocation(latitude, longitude, allowedRadius);
+    setUser(session);
+  }, []);
+
+  const resetWorkplaceLocation = useCallback(async () => {
+    const session = await authService.resetWorkplaceLocation();
+    setUser(session);
+  }, []);
+
   const updatePassword = useCallback(async (currentPassword, newPassword) => {
     await authService.updatePassword(currentPassword, newPassword);
   }, []);
@@ -51,15 +66,18 @@ export function AuthProvider({ children }) {
 
   return (
     <AuthContext.Provider
-      value={{ 
-        user, 
-        isLoading, 
-        isAuthenticated: !!user, 
-        login, 
-        register, 
+      value={{
+        user,
+        isLoading,
+        isAuthenticated: !!user,
+        login,
+        register,
         logout,
         updateProfile,
         updateEmail,
+        updateWorkplace,
+        updateWorkplaceLocation,
+        resetWorkplaceLocation,
         updatePassword,
         updatePhoto
       }}
