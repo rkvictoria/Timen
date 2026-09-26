@@ -8,17 +8,19 @@ import MapView, { Circle, Marker } from 'react-native-maps';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { colors } from '../styles/colors';
-import { savePoint } from '../services/pointService';
+import { pointLabels, savePoint } from '../services/pointService';
 import { useAuth } from '../hooks/useAuth';
 
 const FALLBACK_REGION = { latitude: -22.9068, longitude: -43.1729 };
 
-const successCopy = {
-  entry: { label: 'ENTRADA REGISTRADA', title: 'Bora trabalhar.' },
-  break: { label: 'INTERVALO INICIADO', title: 'Café merecido.' },
-  return: { label: 'RETORNO REGISTRADO', title: 'De volta ao jogo.' },
-  exit: { label: 'SAÍDA REGISTRADA', title: 'Missão cumprida.' },
-};
+function getSuccessCopy(pointType) {
+  const label = pointLabels[pointType] || 'Ponto';
+  const isEntry = pointType?.startsWith('entry');
+  return {
+    label: `${label.toUpperCase()} REGISTRADA`,
+    title: isEntry ? 'Bora trabalhar.' : 'Até a próxima.',
+  };
+}
 
 function distanceInMeters(from, to) {
   const earthRadius = 6371000;
@@ -208,7 +210,7 @@ export default function PointValidationScreen({ navigation, route }) {
 
   const finishValidation = async () => {
     const recordedAtValue = new Date();
-    await savePoint(route.params?.pointType || 'entry');
+    await savePoint(route.params?.pointType || 'entry_1');
     setRecordedAt(recordedAtValue);
     setStep('success');
   };
@@ -384,7 +386,7 @@ export default function PointValidationScreen({ navigation, route }) {
   );
 
   const renderSuccess = () => {
-    const copy = successCopy[route.params?.pointType] || successCopy.entry;
+    const copy = getSuccessCopy(route.params?.pointType);
     const reveal = (start, end, distanceY = 18) => ({
       opacity: successReveal.interpolate({ inputRange: [start, end], outputRange: [0, 1], extrapolate: 'clamp' }),
       transform: [{ translateY: successReveal.interpolate({ inputRange: [start, end], outputRange: [distanceY, 0], extrapolate: 'clamp' }) }],
@@ -468,7 +470,6 @@ export default function PointValidationScreen({ navigation, route }) {
         <ScrollView
           style={styles.sheet}
           contentContainerStyle={[styles.content, styles.locationContent]}
-          scrollEnabled={false}
           showsVerticalScrollIndicator={false}
         >
           <Animated.View style={[styles.stepContent, { opacity: stepOpacity, transform: [{ scale: stepScale }] }]}>

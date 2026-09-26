@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Animated, PanResponder, Pressable, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { Animated, PanResponder, Pressable, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -7,15 +7,17 @@ import { useAuth } from '../hooks/useAuth';
 import { colors } from '../styles/colors';
 import ProfileView from '../components/ProfileView';
 import HistoryView from '../components/HistoryView';
-import { getNextPointType, getTodayPoints } from '../services/pointService';
+import { getNextPointType, getTodayPoints, pointLabels, pointOrder, workedMsForPoints } from '../services/pointService';
 
 const tabs = ['home', 'history', 'register', 'profile'];
-const pointLabels = { entry: 'Entrada', break: 'Início do intervalo', return: 'Retorno', exit: 'Saída' };
-const nextPointLabels = { entry: 'Registrar entrada', break: 'Iniciar intervalo', return: 'Registrar retorno', exit: 'Registrar saída' };
 
 function greeting() {
   const hour = new Date().getHours();
   return hour < 12 ? 'Bom dia' : hour < 18 ? 'Boa tarde' : 'Boa noite';
+}
+
+function nextActionLabel(type) {
+  return type ? `Registrar ${pointLabels[type]}` : '';
 }
 
 export default function HomeScreen({ navigation }) {
@@ -95,15 +97,15 @@ export default function HomeScreen({ navigation }) {
   const goToPointValidation = () => {
     if (nextPointType) navigation.navigate('PointValidation', { pointType: nextPointType });
   };
-  const pointRows = Object.keys(pointLabels).map((type) => ({
+  const pointRows = pointOrder.map((type) => ({
     type,
     label: pointLabels[type],
     time: points[type] ? new Date(points[type]).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—',
   }));
-  const recordedCount = Object.keys(points).length;
+  const recordedCount = pointOrder.filter((type) => points[type]).length;
   const journeyFinished = !nextPointType;
   const journeyTitle = journeyFinished ? 'Finalizado' : 'Em andamento';
-  const activeDuration = points.entry ? Math.max(0, (new Date(points.exit || Date.now()).getTime() - new Date(points.entry).getTime()) - (points.break && points.return ? new Date(points.return).getTime() - new Date(points.break).getTime() : 0)) : 0;
+  const activeDuration = workedMsForPoints(points, true);
   const workedHours = `${String(Math.floor(activeDuration / 3600000)).padStart(2, '0')}h ${String(Math.floor((activeDuration % 3600000) / 60000)).padStart(2, '0')}m`;
 
   const selectTab = (index) => {
@@ -176,7 +178,7 @@ export default function HomeScreen({ navigation }) {
               </Pressable>
             </View>
             <View style={styles.sheet}>
-              <View style={styles.content}>
+              <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
             <View style={styles.greetingBlock}>
               <Text style={styles.greeting}>{greeting()},</Text>
               <Text style={styles.name}>{firstName}.</Text>
@@ -189,14 +191,14 @@ export default function HomeScreen({ navigation }) {
             </View>
 
             {!journeyFinished && <Pressable style={({ pressed }) => [styles.registerButton, pressed && styles.pressed]} onPress={goToPointValidation}>
-              <View><Text style={styles.registerText}>{nextPointLabels[nextPointType]}</Text><Text style={styles.registerHint}>Biometria · QR Code · Localização</Text></View>
+              <View><Text style={styles.registerText}>{nextActionLabel(nextPointType)}</Text><Text style={styles.registerHint}>Biometria · QR Code · Localização</Text></View>
               <Text style={styles.arrow}>→</Text>
             </Pressable>}
 
             <View style={styles.todayCard}>
               <View style={styles.todayHeader}>
                 <View><Text style={styles.todayEyebrow}>REGISTROS DE HOJE</Text><Text style={styles.todayTitle}>Hoje</Text></View>
-                <View style={styles.todayCount}><Text style={styles.todayCountValue}>{recordedCount}/4</Text><Text style={styles.todayCountLabel}>pontos</Text></View>
+                <View style={styles.todayCount}><Text style={styles.todayCountValue}>{recordedCount}/{pointOrder.length}</Text><Text style={styles.todayCountLabel}>pontos</Text></View>
               </View>
               <View style={styles.todayTable}>
                 {pointRows.map(({ type, label, time }, index) => <View key={type} style={[styles.todayRow, index < pointRows.length - 1 && styles.todayRowBorder]}>
@@ -207,7 +209,7 @@ export default function HomeScreen({ navigation }) {
                 </View>)}
               </View>
             </View>
-              </View>
+              </ScrollView>
             </View>
           </>
         )}
@@ -216,10 +218,10 @@ export default function HomeScreen({ navigation }) {
       <View style={styles.bottomNav} {...panResponder.panHandlers}>
         <Animated.View style={[styles.tabIndicator, { left: 8 + (tabWidth - 50) / 2, transform: [{ translateX: tabPosition }] }]} />
         <Pressable accessibilityRole="button" accessibilityLabel="Início" style={styles.navItem} onPress={() => selectTab(0)}>
-          <Animated.View style={getIconAnimation(0)}><Ionicons name="home" size={22} color={activeTab === 'home' ? colors.background : '#BDB8B0'} /></Animated.View>
+          <Animated.View style={getIconAnimation(0)}><Ionicons name={activeTab === 'home' ? 'home' : 'home-outline'} size={22} color={activeTab === 'home' ? colors.background : '#BDB8B0'} /></Animated.View>
         </Pressable>
         <Pressable accessibilityRole="button" accessibilityLabel="Histórico" style={styles.navItem} onPress={() => selectTab(1)}>
-          <Animated.View style={getIconAnimation(1)}><Ionicons name="time-outline" size={23} color={activeTab === 'history' ? colors.background : '#BDB8B0'} /></Animated.View>
+          <Animated.View style={getIconAnimation(1)}><Ionicons name={activeTab === 'history' ? 'time' : 'time-outline'} size={23} color={activeTab === 'history' ? colors.background : '#BDB8B0'} /></Animated.View>
         </Pressable>
         <View style={styles.navItem}>
           <Pressable accessibilityRole="button" accessibilityLabel="Registrar ponto" style={[styles.mainNavItem, activeTab === 'register' && styles.mainNavItemActive]} onPress={() => selectTab(2, true)}>
@@ -227,7 +229,7 @@ export default function HomeScreen({ navigation }) {
           </Pressable>
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel="Perfil" style={styles.navItem} onPress={() => selectTab(3)}>
-          <Animated.View style={getIconAnimation(3)}><Ionicons name="person-outline" size={23} color={activeTab === 'profile' ? colors.background : '#BDB8B0'} /></Animated.View>
+          <Animated.View style={getIconAnimation(3)}><Ionicons name={activeTab === 'profile' ? 'person' : 'person-outline'} size={23} color={activeTab === 'profile' ? colors.background : '#BDB8B0'} /></Animated.View>
         </Pressable>
       </View>
     </SafeAreaView>

@@ -1,4 +1,5 @@
 import { createContext, useEffect, useState, useCallback } from 'react';
+import * as LocalAuthentication from 'expo-local-authentication';
 import { authService } from '../services/authService';
 
 export const AuthContext = createContext(null);
@@ -6,19 +7,26 @@ export const AuthContext = createContext(null);
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [isLoading, setIsLoading] = useState(true);
+  const [isLocked, setIsLocked] = useState(false);
 
   useEffect(() => {
     // TEMPORÁRIO: delay só para testar o LoadingScreen. Remover depois.
     const wait = new Promise((resolve) => setTimeout(resolve, 2000));
 
     Promise.all([authService.getSession(), wait])
-      .then(([session]) => setUser(session))
+      .then(([session]) => {
+        setUser(session);
+        // Se já existe sessão salva, o app abre travado e pede biometria
+        // em vez de voltar direto pra Home (padrão de app bancário).
+        setIsLocked(!!session);
+      })
       .finally(() => setIsLoading(false));
   }, []);
 
   const login = useCallback(async (email, password) => {
     const session = await authService.login(email, password);
     setUser(session);
+    setIsLocked(false);
   }, []);
 
   const register = useCallback(async (firstName, lastName, email, password, workplace) => {
@@ -28,6 +36,26 @@ export function AuthProvider({ children }) {
   const logout = useCallback(async () => {
     await authService.logout();
     setUser(null);
+    setIsLocked(false);
+  }, []);
+
+  // Desbloqueia o app com a biometria do aparelho, sem exigir login digitado.
+  const unlock = useCallback(async () => {
+    const hasHardware = await LocalAuthentication.hasHardwareAsync();
+    const isEnrolled = await LocalAuthentication.isEnrolledAsync();
+    if (!hasHardware || !isEnrolled) {
+      // Aparelho sem biometria configurada: libera o acesso direto.
+      setIsLocked(false);
+      return { success: true };
+    }
+    const result = await LocalAuthentication.authenticateAsync({
+      promptMessage: 'Confirme sua identidade para continuar',
+      cancelLabel: 'Cancelar',
+    });
+    if (result.success) {
+      setIsLocked(false);
+    }
+    return result;
   }, []);
 
   const updateProfile = useCallback(async (firstName, lastName) => {
@@ -70,6 +98,8 @@ export function AuthProvider({ children }) {
         user,
         isLoading,
         isAuthenticated: !!user,
+        isLocked,
+        unlock,
         login,
         register,
         logout,
@@ -79,7 +109,7 @@ export function AuthProvider({ children }) {
         updateWorkplaceLocation,
         resetWorkplaceLocation,
         updatePassword,
-        updatePhoto
+        updatePhoto,
       }}
     >
       {children}
