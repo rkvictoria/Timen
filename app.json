@@ -12,6 +12,14 @@
     "plugins": [
       "expo-local-authentication",
       [
+        "expo-splash-screen",
+        {
+          "image": "./assets/splash-icon.png",
+          "resizeMode": "contain",
+          "backgroundColor": "#F5F1E8"
+        }
+      ],
+      [
         "expo-camera",
         {
           "cameraPermission": "Permita que o Timen use a câmera para ler o QR Code do ponto.",
