@@ -2,23 +2,11 @@ import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import { colors } from '../styles/colors';
-import { getAllPoints, pointOrder, todayKey } from '../services/pointService';
-
-const pointLabels = { entry: 'Entrada', break: 'Início do intervalo', return: 'Retorno', exit: 'Saída' };
+import { getAllPoints, pointLabels, pointOrder, todayKey, workedMsForPoints } from '../services/pointService';
 
 function parseDateKey(key) {
   const [year, month, day] = key.split('-').map(Number);
   return new Date(year, month - 1, day);
-}
-
-function workedMs(points, isToday) {
-  if (!points.entry) return 0;
-  const end = points.exit ? new Date(points.exit).getTime() : isToday ? Date.now() : null;
-  if (end === null) return 0;
-  const pause = points.break && points.return
-    ? new Date(points.return).getTime() - new Date(points.break).getTime()
-    : 0;
-  return Math.max(0, end - new Date(points.entry).getTime() - pause);
 }
 
 function formatDuration(ms) {
@@ -48,7 +36,7 @@ export default function HistoryView() {
 
   const today = todayKey();
   const totalMs = useMemo(
-    () => days.reduce((sum, { date, points }) => sum + workedMs(points, date === today), 0),
+    () => days.reduce((sum, { date, points }) => sum + workedMsForPoints(points, date === today), 0),
     [days, today],
   );
 
@@ -87,7 +75,7 @@ export default function HistoryView() {
                 const isToday = date === today;
                 const count = pointOrder.filter((type) => points[type]).length;
                 const complete = count === pointOrder.length;
-                const dayMs = workedMs(points, isToday);
+                const dayMs = workedMsForPoints(points, isToday);
                 return (
                   <View key={date} style={styles.dayCard}>
                     <View style={styles.dayHeader}>
@@ -99,7 +87,7 @@ export default function HistoryView() {
                       </View>
                       <View style={styles.dayHours}>
                         <Text style={styles.dayHoursValue}>{dayMs > 0 ? formatDuration(dayMs) : '—'}</Text>
-                        <Text style={styles.dayHoursLabel}>{count}/4 pontos</Text>
+                        <Text style={styles.dayHoursLabel}>{count}/{pointOrder.length} pontos</Text>
                       </View>
                     </View>
                     {pointOrder.map((type, index) => {
