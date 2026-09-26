@@ -84,7 +84,6 @@ export default function LoginScreen() {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
-          scrollEnabled={false}
           showsVerticalScrollIndicator={false}
         >
           <View style={styles.content}>
