@@ -1,6 +1,5 @@
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import { STORAGE_KEYS } from '../constants/storageKeys';
-
+import { getDb } from '../database/db';
+import { authService } from './authService';
 
 export const ENTRY_EXIT_PAIRS = 1;
 
@@ -31,44 +30,105 @@ function todayKey() {
   return `${date.getFullYear()}-${month}-${day}`;
 }
 
-export async function getTodayPoints() {
-  const storedPoints = await AsyncStorage.getItem(STORAGE_KEYS.POINTS);
-  const pointsByDate = storedPoints ? JSON.parse(storedPoints) : {};
-  return pointsByDate[todayKey()] || {};
+function toPoint(row) {
+  return { at: row.recorded_at, qrId: row.location_id, locationName: row.location_name };
 }
 
-export async function getAllPoints() {
-  const storedPoints = await AsyncStorage.getItem(STORAGE_KEYS.POINTS);
-  const pointsByDate = storedPoints ? JSON.parse(storedPoints) : {};
-  return Object.keys(pointsByDate)
-    .sort()
-    .reverse()
-    .map((date) => ({ date, points: pointsByDate[date] }));
+export function pointTime(value) {
+  if (!value) return null;
+  return typeof value === 'string' ? value : value.at || null;
 }
 
-export async function savePoint(type) {
-  const storedPoints = await AsyncStorage.getItem(STORAGE_KEYS.POINTS);
-  const pointsByDate = storedPoints ? JSON.parse(storedPoints) : {};
-  const date = todayKey();
-  const dayPoints = pointsByDate[date] || {};
+export function pointLocation(value) {
+  return value && typeof value === 'object' ? value.locationName || null : null;
+}
 
-  if (dayPoints[type]) return dayPoints;
+export async function getTodayPoints(userId) {
+  const db = await getDb();
+  const rows = await db.getAllAsync(
+    'SELECT type, recorded_at, location_id, location_name FROM attendance WHERE user_id = ? AND date = ?',
+    [userId, todayKey()],
+  );
+  return Object.fromEntries(rows.map((row) => [row.type, toPoint(row)]));
+}
 
-  const nextPoints = { ...dayPoints, [type]: new Date().toISOString() };
-  pointsByDate[date] = nextPoints;
-  await AsyncStorage.setItem(STORAGE_KEYS.POINTS, JSON.stringify(pointsByDate));
-  return nextPoints;
+export async function getAllPoints(userId) {
+  const db = await getDb();
+  const rows = await db.getAllAsync(
+    `SELECT date, type, recorded_at, location_id, location_name
+     FROM attendance WHERE user_id = ? ORDER BY date DESC`,
+    [userId],
+  );
+
+  const byDate = new Map();
+  rows.forEach((row) => {
+    if (!byDate.has(row.date)) byDate.set(row.date, {});
+    byDate.get(row.date)[row.type] = toPoint(row);
+  });
+  return Array.from(byDate, ([date, points]) => ({ date, points }));
+}
+
+export async function getAllRecords() {
+  const admin = await authService.requireManager();
+  const db = await getDb();
+  const rows = await db.getAllAsync(
+    `SELECT a.user_id, a.date, a.type, a.recorded_at, a.location_id, a.location_name
+     FROM attendance a
+     JOIN users u ON u.id = a.user_id
+     WHERE u.organization_id = ?`,
+    [admin.organizationId],
+  );
+
+  const records = {};
+  rows.forEach((row) => {
+    records[row.user_id] ??= {};
+    records[row.user_id][row.date] ??= {};
+    records[row.user_id][row.date][row.type] = toPoint(row);
+  });
+  return records;
+}
+
+export async function savePoint(type, userId, meta = {}) {
+  const db = await getDb();
+  await db.runAsync(
+    `INSERT OR IGNORE INTO attendance (user_id, date, type, recorded_at, location_id, location_name)
+     VALUES (?, ?, ?, ?, ?, ?)`,
+    [userId, todayKey(), type, new Date().toISOString(), meta.qrId || null, meta.locationName || null],
+  );
+  return getTodayPoints(userId);
 }
 
 export function getNextPointType(points) {
   return pointOrder.find((type) => !points[type]) || null;
 }
 
+export function recordedDates(records) {
+  const dates = new Set();
+  Object.values(records).forEach((days) => {
+    Object.entries(days).forEach(([date, points]) => {
+      if (Object.keys(points).length > 0) dates.add(date);
+    });
+  });
+  return dates;
+}
+
+export function attendanceEntries(records, users, date) {
+  const names = new Map(users.map((user) => [user.id, `${user.firstName} ${user.lastName}`.trim()]));
+  return Object.entries(records)
+    .filter(([, days]) => days[date] && Object.keys(days[date]).length > 0)
+    .map(([userId, days]) => ({
+      userId,
+      name: names.get(userId) || 'Usuário removido',
+      points: days[date],
+    }))
+    .sort((a, b) => a.name.localeCompare(b.name));
+}
+
 export function workedMsForPoints(points, isToday = false) {
   let total = 0;
   for (let i = 1; i <= ENTRY_EXIT_PAIRS; i += 1) {
-    const entry = points[`entry_${i}`];
-    const exit = points[`exit_${i}`];
+    const entry = pointTime(points[`entry_${i}`]);
+    const exit = pointTime(points[`exit_${i}`]);
     if (!entry) break;
     const end = exit ? new Date(exit).getTime() : isToday ? Date.now() : null;
     if (end === null) continue;

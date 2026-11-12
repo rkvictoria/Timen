@@ -1,38 +1,43 @@
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../hooks/useAuth';
 import { colors } from '../styles/colors';
-import { getAllPoints, pointLabels, pointOrder, todayKey, workedMsForPoints } from '../services/pointService';
-
-function parseDateKey(key) {
-  const [year, month, day] = key.split('-').map(Number);
-  return new Date(year, month - 1, day);
-}
-
-function formatDuration(ms) {
-  const hours = String(Math.floor(ms / 3600000)).padStart(2, '0');
-  const minutes = String(Math.floor((ms % 3600000) / 60000)).padStart(2, '0');
-  return `${hours}h ${minutes}m`;
-}
-
-function formatTime(iso) {
-  return iso ? new Date(iso).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—';
-}
+import { authService } from '../services/authService';
+import {
+  attendanceEntries,
+  getAllPoints,
+  getAllRecords,
+  pointLabels,
+  pointOrder,
+  recordedDates,
+  todayKey,
+  workedMsForPoints,
+} from '../services/pointService';
+import { formatDuration, formatLongDate, formatTime, parseDateKey } from '../utils/format';
+import AttendanceCalendar from './AttendanceCalendar';
+import AttendanceList from './AttendanceList';
 
 export default function HistoryView() {
+  const { isManager } = useAuth();
+  return isManager ? <ManagerHistory /> : <MemberHistory />;
+}
+
+function MemberHistory() {
+  const { user } = useAuth();
   const [days, setDays] = useState([]);
   const [isLoading, setIsLoading] = useState(true);
 
   useEffect(() => {
     let active = true;
-    getAllPoints()
+    getAllPoints(user.id)
       .then((data) => active && setDays(data))
       .catch(() => active && setDays([]))
       .finally(() => active && setIsLoading(false));
     return () => {
       active = false;
     };
-  }, []);
+  }, [user.id]);
 
   const today = todayKey();
   const totalMs = useMemo(
@@ -81,9 +86,7 @@ export default function HistoryView() {
                     <View style={styles.dayHeader}>
                       <View style={styles.dayHeaderLeft}>
                         <Text style={styles.dayEyebrow}>{isToday ? 'HOJE' : complete ? 'COMPLETO' : 'INCOMPLETO'}</Text>
-                        <Text style={styles.dayTitle}>
-                          {new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }).format(parseDateKey(date))}
-                        </Text>
+                        <Text style={styles.dayTitle}>{formatLongDate(parseDateKey(date))}</Text>
                       </View>
                       <View style={styles.dayHours}>
                         <Text style={styles.dayHoursValue}>{dayMs > 0 ? formatDuration(dayMs) : '—'}</Text>
@@ -112,16 +115,80 @@ export default function HistoryView() {
   );
 }
 
+function ManagerHistory() {
+  const [data, setData] = useState({ users: [], records: {} });
+  const [isLoading, setIsLoading] = useState(true);
+  const [selectedDate, setSelectedDate] = useState(todayKey());
+
+  useEffect(() => {
+    let active = true;
+    Promise.all([authService.listUsers(), getAllRecords()])
+      .then(([users, records]) => active && setData({ users, records }))
+      .catch(() => active && setData({ users: [], records: {} }))
+      .finally(() => active && setIsLoading(false));
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  const markedDates = useMemo(() => recordedDates(data.records), [data.records]);
+  const entries = useMemo(
+    () => attendanceEntries(data.records, data.users, selectedDate),
+    [data, selectedDate],
+  );
+
+  return (
+    <View style={styles.root}>
+      <View style={styles.darkHeader}>
+        <Text style={styles.headerTitle}>Histórico</Text>
+      </View>
+
+      <View style={styles.sheet}>
+        {isLoading ? (
+          <View style={styles.centered}>
+            <ActivityIndicator color={colors.primary} />
+          </View>
+        ) : (
+          <ScrollView contentContainerStyle={styles.managerContent} showsVerticalScrollIndicator={false}>
+            <AttendanceCalendar
+              markedDates={markedDates}
+              selectedDate={selectedDate}
+              onSelectDate={setSelectedDate}
+            />
+
+            <View style={styles.selectedHeader}>
+              <Text style={styles.selectedTitle}>{formatLongDate(parseDateKey(selectedDate))}</Text>
+              <Text style={styles.selectedCount}>
+                {entries.length} {entries.length === 1 ? 'pessoa' : 'pessoas'}
+              </Text>
+            </View>
+
+            <AttendanceList
+              entries={entries}
+              date={selectedDate}
+              emptyText="Nenhum registro neste dia."
+            />
+          </ScrollView>
+        )}
+      </View>
+    </View>
+  );
+}
+
 const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.primary },
   darkHeader: { height: 110, paddingHorizontal: 24, paddingTop: 20 },
   headerTitle: { color: colors.background, fontSize: 30, fontWeight: '700' },
-  headerSubtitle: { color: '#D8D2C9', fontSize: 13, marginTop: 4 },
   sheet: { flex: 1, backgroundColor: colors.background, borderTopLeftRadius: 40, borderTopRightRadius: 40, overflow: 'hidden' },
   content: { padding: 22, paddingTop: 24, paddingBottom: 124 },
+  managerContent: { padding: 22, paddingTop: 28, paddingBottom: 124 },
   centered: { alignItems: 'center', flex: 1, justifyContent: 'center', paddingBottom: 100, paddingHorizontal: 40 },
   emptyTitle: { color: colors.text, fontSize: 18, fontWeight: '600', marginTop: 14 },
   emptyText: { color: colors.disabled, fontSize: 13, marginTop: 6, textAlign: 'center' },
+
+  selectedHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 },
+  selectedTitle: { color: colors.text, flex: 1, fontSize: 16, fontWeight: '600', paddingRight: 12, textTransform: 'capitalize' },
+  selectedCount: { color: colors.disabled, fontSize: 12 },
 
   summaryCard: {
     alignItems: 'center',

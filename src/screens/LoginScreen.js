@@ -22,7 +22,7 @@ export default function LoginScreen() {
   const [loginSenha, setLoginSenha] = useState('');
   const [cadastroNome, setCadastroNome] = useState('');
   const [cadastroSobrenome, setCadastroSobrenome] = useState('');
-  const [cadastroWorkplace, setCadastroWorkplace] = useState('');
+  const [cadastroEmpresa, setCadastroEmpresa] = useState('');
   const [cadastroEmail, setCadastroEmail] = useState('');
   const [cadastroSenha, setCadastroSenha] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
@@ -50,11 +50,11 @@ export default function LoginScreen() {
     setIsSubmitting(true);
     try {
       if (mode === 'cadastro') {
-        await register(cadastroNome, cadastroSobrenome, cadastroEmail, cadastroSenha, cadastroWorkplace);
+        await register(cadastroNome, cadastroSobrenome, cadastroEmail, cadastroSenha, cadastroEmpresa);
         setMode('login');
         setCadastroNome('');
         setCadastroSobrenome('');
-        setCadastroWorkplace('');
+        setCadastroEmpresa('');
         setCadastroSenha('');
         setErrorMessage('Cadastro realizado. Faça login.');
       } else {
@@ -111,12 +111,12 @@ export default function LoginScreen() {
             >
               <View style={styles.headingBlock}>
                 <Text style={styles.title}>
-                  {mode === 'login' ? 'Bem-vindo de volta.' : 'Criar conta.'}
+                  {mode === 'login' ? 'Bem-vindo de volta.' : 'Cadastrar empresa.'}
                 </Text>
                 <Text style={styles.subtitle}>
                   {mode === 'login'
                     ? 'Entre para continuar'
-                    : 'Preencha seus dados para começar'}
+                    : 'Você será o administrador e cadastrará sua equipe'}
                 </Text>
               </View>
 
@@ -156,13 +156,13 @@ export default function LoginScreen() {
               )}
               {mode === 'cadastro' && (
                 <View style={styles.field}>
-                  <Text style={styles.label}>LOCAL DE TRABALHO</Text>
+                  <Text style={styles.label}>EMPRESA</Text>
                   <TextInput
                     style={styles.input}
-                    placeholder="Nome da empresa ou local"
+                    placeholder="Nome da empresa"
                     placeholderTextColor={colors.disabled}
-                    value={cadastroWorkplace}
-                    onChangeText={setCadastroWorkplace}
+                    value={cadastroEmpresa}
+                    onChangeText={setCadastroEmpresa}
                     autoCapitalize="words"
                   />
                 </View>
@@ -210,7 +210,7 @@ export default function LoginScreen() {
             >
               <Text style={styles.switchModeText}>
                 <Text style={styles.mutedText}>
-                  {mode === 'login' ? 'Não tem conta? ' : 'Já tem conta? '}
+                  {mode === 'login' ? 'Sua empresa ainda não usa o Timen? ' : 'Já tem conta? '}
                 </Text>
                 <Text style={styles.linkText}>
                   {mode === 'login' ? 'Cadastrar' : 'Entrar'}

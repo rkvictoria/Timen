@@ -2,25 +2,97 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import bcrypt from 'bcryptjs';
 import * as Crypto from 'expo-crypto';
 import { STORAGE_KEYS } from '../constants/storageKeys';
+import { getDb } from '../database/db';
+
+export const ROLES = { MEMBER: 'member', MANAGER: 'manager' };
 
 bcrypt.setRandomFallback((length) => {
   const bytes = Crypto.getRandomValues(new Uint8Array(length));
   return Array.from(bytes);
 });
 
+const USER_QUERY = `
+  SELECT u.*, o.name AS organization_name
+  FROM users u
+  JOIN organizations o ON o.id = u.organization_id
+`;
+
 function isValidEmail(email) {
   return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
 }
 
+function toSession(row) {
+  return {
+    id: row.id,
+    organizationId: row.organization_id,
+    organizationName: row.organization_name,
+    firstName: row.first_name,
+    lastName: row.last_name,
+    email: row.email,
+    workplace:
+      (row.role === ROLES.MANAGER ? row.organization_name : row.workplace) || 'Local de trabalho',
+    workplaceLocation:
+      row.workplace_latitude === null
+        ? null
+        : {
+            latitude: row.workplace_latitude,
+            longitude: row.workplace_longitude,
+            allowedRadius: row.workplace_radius,
+          },
+    photo: row.photo || null,
+    role: row.role,
+    active: !!row.active,
+  };
+}
+
+async function getSession() {
+  const stored = await AsyncStorage.getItem(STORAGE_KEYS.SESSION);
+  if (!stored) return null;
+
+  const { userId } = JSON.parse(stored);
+  const db = await getDb();
+  const row = await db.getFirstAsync(`${USER_QUERY} WHERE u.id = ?`, [userId ?? '']);
+  if (!row || !row.active) return null;
+
+  return toSession(row);
+}
+
+async function requireManager() {
+  const session = await getSession();
+  if (session?.role !== ROLES.MANAGER) throw new Error('Acesso restrito.');
+  return session;
+}
+
+async function updateCurrentUser(columns) {
+  const session = await getSession();
+  if (!session) throw new Error('Credenciais não encontradas.');
+
+  const names = Object.keys(columns);
+  const db = await getDb();
+  await db.runAsync(
+    `UPDATE users SET ${names.map((name) => `${name} = ?`).join(', ')} WHERE id = ?`,
+    [...names.map((name) => columns[name]), session.id],
+  );
+  return getSession();
+}
+
+async function assertEmailAvailable(db, email, exceptUserId = '') {
+  const existing = await db.getFirstAsync(
+    'SELECT 1 AS found FROM users WHERE email = ? AND id != ?',
+    [email, exceptUserId],
+  );
+  if (existing) throw new Error('Já existe um cadastro com esse e-mail.');
+}
+
 export const authService = {
-  async register(firstName, lastName, email, password, workplace) {
+  async register(firstName, lastName, email, password, organizationName) {
     const normalizedFirstName = firstName.trim();
     const normalizedLastName = lastName.trim();
     const normalizedEmail = email.trim().toLowerCase();
-    const normalizedWorkplace = workplace.trim();
+    const normalizedOrganization = organizationName.trim();
 
-    if (!normalizedFirstName || !normalizedLastName || !normalizedEmail || !password || !normalizedWorkplace) {
-      throw new Error('Preencha nome, sobrenome, local de trabalho, e-mail e senha.');
+    if (!normalizedFirstName || !normalizedLastName || !normalizedEmail || !password || !normalizedOrganization) {
+      throw new Error('Preencha nome, sobrenome, empresa, e-mail e senha.');
     }
     if (!isValidEmail(normalizedEmail)) {
       throw new Error('Insira um e-mail válido.');
@@ -29,28 +101,37 @@ export const authService = {
       throw new Error('A senha deve ter no mínimo 6 caracteres.');
     }
 
-    const existing = await AsyncStorage.getItem(STORAGE_KEYS.CREDENTIALS);
-    if (existing) {
-      const stored = JSON.parse(existing);
-      if (stored.email === normalizedEmail) {
-        throw new Error('Já existe um cadastro com esse e-mail.');
-      }
-    }
+    const db = await getDb();
+    await assertEmailAvailable(db, normalizedEmail);
 
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(password, salt);
+    const organizationId = Crypto.randomUUID();
+    const now = new Date().toISOString();
 
-    await AsyncStorage.setItem(
-      STORAGE_KEYS.CREDENTIALS,
-      JSON.stringify({
-        firstName: normalizedFirstName,
-        lastName: normalizedLastName,
-        email: normalizedEmail,
-        workplace: normalizedWorkplace,
-        workplaceLocation: null,
-        passwordHash,
-      })
-    );
+    await db.withTransactionAsync(async () => {
+      await db.runAsync('INSERT INTO organizations (id, name, created_at) VALUES (?, ?, ?)', [
+        organizationId,
+        normalizedOrganization,
+        now,
+      ]);
+      await db.runAsync(
+        `INSERT INTO users (
+          id, organization_id, first_name, last_name, email, password_hash, workplace, role, created_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        [
+          Crypto.randomUUID(),
+          organizationId,
+          normalizedFirstName,
+          normalizedLastName,
+          normalizedEmail,
+          passwordHash,
+          normalizedOrganization,
+          ROLES.MANAGER,
+          now,
+        ],
+      );
+    });
   },
 
   async login(email, password) {
@@ -60,96 +141,132 @@ export const authService = {
       throw new Error('Preencha e-mail e senha.');
     }
 
-    const stored = await AsyncStorage.getItem(STORAGE_KEYS.CREDENTIALS);
-    if (!stored) {
+    const db = await getDb();
+    const { total } = await db.getFirstAsync('SELECT COUNT(*) AS total FROM users');
+    if (total === 0) {
       throw new Error('Nenhum usuário cadastrado neste dispositivo.');
     }
 
-    const credentials = JSON.parse(stored);
-    const isMatch =
-      credentials.email === normalizedEmail &&
-      (await bcrypt.compare(password, credentials.passwordHash));
+    const row = await db.getFirstAsync(`${USER_QUERY} WHERE u.email = ?`, [normalizedEmail]);
+    const isMatch = !!row && (await bcrypt.compare(password, row.password_hash));
 
     if (!isMatch) {
       throw new Error('E-mail ou senha incorretos.');
     }
+    if (!row.active) {
+      throw new Error('Conta desativada. Fale com o administrador.');
+    }
 
-    const session = {
-      firstName: credentials.firstName,
-      lastName: credentials.lastName,
-      email: credentials.email,
-      workplace: credentials.workplace || 'Local de trabalho',
-      workplaceLocation: credentials.workplaceLocation || null,
-      photo: credentials.photo || null,
-    };
-    await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
-    return session;
+    await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify({ userId: row.id }));
+    return toSession(row);
   },
 
   async logout() {
     await AsyncStorage.removeItem(STORAGE_KEYS.SESSION);
   },
 
-  async getSession() {
-    const data = await AsyncStorage.getItem(STORAGE_KEYS.SESSION);
-    return data ? JSON.parse(data) : null;
+  getSession,
+  requireManager,
+
+  async listUsers() {
+    const admin = await requireManager();
+    const db = await getDb();
+    const rows = await db.getAllAsync(
+      `${USER_QUERY} WHERE u.organization_id = ? ORDER BY u.first_name, u.last_name`,
+      [admin.organizationId],
+    );
+    return rows.map(toSession);
+  },
+
+  async createMember(firstName, lastName, email, password, locationId) {
+    const admin = await requireManager();
+    const normalizedFirstName = firstName.trim();
+    const normalizedLastName = lastName.trim();
+    const normalizedEmail = email.trim().toLowerCase();
+
+    if (!normalizedFirstName || !normalizedLastName || !normalizedEmail || !password || !locationId) {
+      throw new Error('Preencha nome, sobrenome, e-mail, senha provisória e local.');
+    }
+    if (!isValidEmail(normalizedEmail)) {
+      throw new Error('Insira um e-mail válido.');
+    }
+    if (password.length < 6) {
+      throw new Error('A senha provisória deve ter no mínimo 6 caracteres.');
+    }
+
+    const db = await getDb();
+    const location = await db.getFirstAsync(
+      'SELECT name FROM locations WHERE id = ? AND organization_id = ?',
+      [locationId, admin.organizationId],
+    );
+    if (!location) throw new Error('Local inválido.');
+
+    await assertEmailAvailable(db, normalizedEmail);
+
+    const salt = await bcrypt.genSalt(10);
+    const passwordHash = await bcrypt.hash(password, salt);
+
+    await db.runAsync(
+      `INSERT INTO users (
+        id, organization_id, first_name, last_name, email, password_hash, workplace, role, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [
+        Crypto.randomUUID(),
+        admin.organizationId,
+        normalizedFirstName,
+        normalizedLastName,
+        normalizedEmail,
+        passwordHash,
+        location.name,
+        ROLES.MEMBER,
+        new Date().toISOString(),
+      ],
+    );
+  },
+
+  async setMemberActive(userId, active) {
+    const admin = await requireManager();
+    const db = await getDb();
+    const result = await db.runAsync(
+      'UPDATE users SET active = ? WHERE id = ? AND organization_id = ? AND role = ?',
+      [active ? 1 : 0, userId, admin.organizationId, ROLES.MEMBER],
+    );
+    if (result.changes === 0) throw new Error('Colaborador não encontrado.');
   },
 
   async updateProfile(firstName, lastName) {
-    const stored = await AsyncStorage.getItem(STORAGE_KEYS.CREDENTIALS);
-    if (!stored) throw new Error('Credenciais não encontradas.');
-    const credentials = JSON.parse(stored);
-
-    credentials.firstName = firstName.trim();
-    credentials.lastName = lastName.trim();
-
-    await AsyncStorage.setItem(STORAGE_KEYS.CREDENTIALS, JSON.stringify(credentials));
-
-    const session = await this.getSession();
-    if (session) {
-      session.firstName = credentials.firstName;
-      session.lastName = credentials.lastName;
-      await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
-      return session;
-    }
+    return updateCurrentUser({ first_name: firstName.trim(), last_name: lastName.trim() });
   },
 
   async updateEmail(email) {
     const normalizedEmail = email.trim().toLowerCase();
     if (!isValidEmail(normalizedEmail)) throw new Error('Insira um e-mail válido.');
 
-    const stored = await AsyncStorage.getItem(STORAGE_KEYS.CREDENTIALS);
-    if (!stored) throw new Error('Credenciais não encontradas.');
-    const credentials = JSON.parse(stored);
+    const session = await getSession();
+    if (!session) throw new Error('Credenciais não encontradas.');
 
-    credentials.email = normalizedEmail;
+    const db = await getDb();
+    await assertEmailAvailable(db, normalizedEmail, session.id);
 
-    await AsyncStorage.setItem(STORAGE_KEYS.CREDENTIALS, JSON.stringify(credentials));
-
-    const session = await this.getSession();
-    if (session) {
-      session.email = credentials.email;
-      await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
-      return session;
-    }
+    return updateCurrentUser({ email: normalizedEmail });
   },
 
   async updateWorkplace(workplace) {
+    const session = await getSession();
+    if (!session) throw new Error('Credenciais não encontradas.');
+    if (session.role !== ROLES.MANAGER) {
+      throw new Error('Somente o administrador pode alterar o local de trabalho.');
+    }
+
     const normalizedWorkplace = workplace.trim();
     if (!normalizedWorkplace) throw new Error('Local de trabalho é obrigatório.');
 
-    const stored = await AsyncStorage.getItem(STORAGE_KEYS.CREDENTIALS);
-    if (!stored) throw new Error('Credenciais não encontradas.');
-    const credentials = JSON.parse(stored);
-    credentials.workplace = normalizedWorkplace;
-    await AsyncStorage.setItem(STORAGE_KEYS.CREDENTIALS, JSON.stringify(credentials));
-
-    const session = await this.getSession();
-    if (session) {
-      session.workplace = normalizedWorkplace;
-      await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
-      return session;
-    }
+    const db = await getDb();
+    await db.runAsync('UPDATE organizations SET name = ? WHERE id = ?', [
+      normalizedWorkplace,
+      session.organizationId,
+    ]);
+    return getSession();
   },
 
   async updateWorkplaceLocation(latitude, longitude, allowedRadius) {
@@ -161,65 +278,39 @@ export const authService = {
       throw new Error('Informe um raio válido em metros.');
     }
 
-    const stored = await AsyncStorage.getItem(STORAGE_KEYS.CREDENTIALS);
-    if (!stored) throw new Error('Credenciais não encontradas.');
-    const credentials = JSON.parse(stored);
-    credentials.workplaceLocation = { latitude, longitude, allowedRadius: normalizedRadius };
-    await AsyncStorage.setItem(STORAGE_KEYS.CREDENTIALS, JSON.stringify(credentials));
-
-    const session = await this.getSession();
-    if (session) {
-      session.workplaceLocation = credentials.workplaceLocation;
-      await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
-      return session;
-    }
+    return updateCurrentUser({
+      workplace_latitude: latitude,
+      workplace_longitude: longitude,
+      workplace_radius: normalizedRadius,
+    });
   },
 
   async resetWorkplaceLocation() {
-    const stored = await AsyncStorage.getItem(STORAGE_KEYS.CREDENTIALS);
-    if (!stored) throw new Error('Credenciais não encontradas.');
-    const credentials = JSON.parse(stored);
-    credentials.workplaceLocation = null;
-    await AsyncStorage.setItem(STORAGE_KEYS.CREDENTIALS, JSON.stringify(credentials));
-
-    const session = await this.getSession();
-    if (session) {
-      session.workplaceLocation = null;
-      await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
-      return session;
-    }
+    return updateCurrentUser({
+      workplace_latitude: null,
+      workplace_longitude: null,
+      workplace_radius: null,
+    });
   },
 
   async updatePassword(currentPassword, newPassword) {
-    const stored = await AsyncStorage.getItem(STORAGE_KEYS.CREDENTIALS);
-    if (!stored) throw new Error('Credenciais não encontradas.');
-    const credentials = JSON.parse(stored);
+    const session = await getSession();
+    if (!session) throw new Error('Credenciais não encontradas.');
 
-    const isMatch = await bcrypt.compare(currentPassword, credentials.passwordHash);
+    const db = await getDb();
+    const row = await db.getFirstAsync('SELECT password_hash FROM users WHERE id = ?', [session.id]);
+
+    const isMatch = await bcrypt.compare(currentPassword, row.password_hash);
     if (!isMatch) throw new Error('Senha atual incorreta.');
 
     if (newPassword.length < 6) throw new Error('A nova senha deve ter no mínimo 6 caracteres.');
 
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(newPassword, salt);
-    credentials.passwordHash = passwordHash;
-
-    await AsyncStorage.setItem(STORAGE_KEYS.CREDENTIALS, JSON.stringify(credentials));
+    await db.runAsync('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, session.id]);
   },
 
   async updatePhoto(photoUri) {
-    const stored = await AsyncStorage.getItem(STORAGE_KEYS.CREDENTIALS);
-    if (!stored) throw new Error('Credenciais não encontradas.');
-    const credentials = JSON.parse(stored);
-
-    credentials.photo = photoUri;
-    await AsyncStorage.setItem(STORAGE_KEYS.CREDENTIALS, JSON.stringify(credentials));
-
-    const session = await this.getSession();
-    if (session) {
-      session.photo = photoUri;
-      await AsyncStorage.setItem(STORAGE_KEYS.SESSION, JSON.stringify(session));
-      return session;
-    }
-  }
+    return updateCurrentUser({ photo: photoUri });
+  },
 };
