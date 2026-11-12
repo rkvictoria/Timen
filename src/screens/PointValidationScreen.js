@@ -489,6 +489,7 @@ export default function PointValidationScreen({
     const isValidQr =
       qrData?.app === 'Timen' &&
       qrData?.type === 'workplace' &&
+      qrData?.orgId === user?.organizationId &&
       qrData?.workplace === workplaceName;
 
     if (!isValidQr) {
@@ -581,15 +582,20 @@ export default function PointValidationScreen({
 
     scanLocked.current = true;
 
-    finishValidation();
+    finishValidation(qrData);
   };
 
-  const finishValidation = async () => {
+  const finishValidation = async (qrData) => {
     const recordedAtValue = new Date();
 
     try {
       await savePoint(
         route.params?.pointType || 'entry_1',
+        user.id,
+        {
+          qrId: qrData?.qrId || null,
+          locationName: qrData?.workplace || workplaceName,
+        },
       );
 
       setRecordedAt(recordedAtValue);

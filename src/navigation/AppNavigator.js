@@ -7,11 +7,13 @@ import WelcomeScreen from '../screens/WelcomeScreen';
 import LoginScreen from '../screens/LoginScreen';
 import HomeScreen from '../screens/HomeScreen';
 import PointValidationScreen from '../screens/PointValidationScreen';
+import QrCodesScreen from '../screens/QrCodesScreen';
+import MembersScreen from '../screens/MembersScreen';
 
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
-  const { isAuthenticated, isLoading, isLocked } = useAuth();
+  const { isAuthenticated, isLoading, isLocked, isManager } = useAuth();
 
   if (isLoading) {
     return <LoadingScreen />;
@@ -30,7 +32,14 @@ export default function AppNavigator() {
         ) : isAuthenticated ? (
           <>
             <Stack.Screen name="Home" component={HomeScreen} />
-            <Stack.Screen name="PointValidation" component={PointValidationScreen} />
+            {isManager ? (
+              <>
+                <Stack.Screen name="QrCodes" component={QrCodesScreen} />
+                <Stack.Screen name="Members" component={MembersScreen} />
+              </>
+            ) : (
+              <Stack.Screen name="PointValidation" component={PointValidationScreen} />
+            )}
           </>
         ) : (
           <>

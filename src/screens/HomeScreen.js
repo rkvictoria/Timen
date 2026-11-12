@@ -7,7 +7,9 @@ import { useAuth } from '../hooks/useAuth';
 import { colors } from '../styles/colors';
 import ProfileView from '../components/ProfileView';
 import HistoryView from '../components/HistoryView';
+import ManagerDashboard from '../components/ManagerDashboard';
 import { getNextPointType, getTodayPoints, pointLabels, pointOrder, workedMsForPoints } from '../services/pointService';
+import { formatTime } from '../utils/format';
 
 const tabs = ['home', 'history', 'register', 'profile'];
 
@@ -21,7 +23,7 @@ function nextActionLabel(type) {
 }
 
 export default function HomeScreen({ navigation }) {
-  const { user, logout } = useAuth();
+  const { user, logout, isManager } = useAuth();
   const [points, setPoints] = useState({});
   const [activeTab, setActiveTab] = useState('home');
   const tabPosition = useRef(new Animated.Value(0)).current;
@@ -41,8 +43,9 @@ export default function HomeScreen({ navigation }) {
   }, [user?.email, user?.firstName]);
 
   const refreshPoints = async () => {
+    if (isManager) return;
     try {
-      setPoints(await getTodayPoints());
+      setPoints(await getTodayPoints(user.id));
     } catch {
       setPoints({});
     }
@@ -100,7 +103,7 @@ export default function HomeScreen({ navigation }) {
   const pointRows = pointOrder.map((type) => ({
     type,
     label: pointLabels[type],
-    time: points[type] ? new Date(points[type]).toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' }) : '—',
+    time: formatTime(points[type]),
   }));
   const recordedCount = pointOrder.filter((type) => points[type]).length;
   const journeyFinished = !nextPointType;
@@ -114,10 +117,11 @@ export default function HomeScreen({ navigation }) {
     if (tab === activeTabRef.current) return;
 
     if (tab === 'register') {
-      if (!nextPointType) return;
+      if (!isManager && !nextPointType) return;
       activeTabRef.current = tab;
       setActiveTab(tab);
-      goToPointValidation();
+      if (isManager) navigation.navigate('QrCodes');
+      else goToPointValidation();
     } else {
       animateContentTo(tab);
     }
@@ -165,6 +169,8 @@ export default function HomeScreen({ navigation }) {
           <ProfileView />
         ) : activeTab === 'history' ? (
           <HistoryView />
+        ) : isManager ? (
+          <ManagerDashboard navigation={navigation} />
         ) : (
           <>
             <View style={styles.darkHeader}>
@@ -224,8 +230,8 @@ export default function HomeScreen({ navigation }) {
           <Animated.View style={getIconAnimation(1)}><Ionicons name={activeTab === 'history' ? 'time' : 'time-outline'} size={23} color={activeTab === 'history' ? colors.background : '#BDB8B0'} /></Animated.View>
         </Pressable>
         <View style={styles.navItem}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Registrar ponto" style={[styles.mainNavItem, activeTab === 'register' && styles.mainNavItemActive]} onPress={() => selectTab(2, true)}>
-            <Animated.View style={getIconAnimation(2)}><Ionicons name="scan-outline" size={25} color={colors.primary} /></Animated.View>
+          <Pressable accessibilityRole="button" accessibilityLabel={isManager ? 'QR Codes' : 'Registrar ponto'} style={[styles.mainNavItem, activeTab === 'register' && styles.mainNavItemActive]} onPress={() => selectTab(2)}>
+            <Animated.View style={getIconAnimation(2)}><Ionicons name={isManager ? 'qr-code-outline' : 'scan-outline'} size={25} color={colors.primary} /></Animated.View>
           </Pressable>
         </View>
         <Pressable accessibilityRole="button" accessibilityLabel="Perfil" style={styles.navItem} onPress={() => selectTab(3)}>
