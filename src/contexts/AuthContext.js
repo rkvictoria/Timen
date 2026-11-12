@@ -1,6 +1,6 @@
 import { createContext, useEffect, useState, useCallback } from 'react';
 import * as LocalAuthentication from 'expo-local-authentication';
-import { authService } from '../services/authService';
+import { authService, ROLES } from '../services/authService';
 
 export const AuthContext = createContext(null);
 
@@ -29,8 +29,8 @@ export function AuthProvider({ children }) {
     setIsLocked(false);
   }, []);
 
-  const register = useCallback(async (firstName, lastName, email, password, workplace) => {
-    await authService.register(firstName, lastName, email, password, workplace);
+  const register = useCallback(async (firstName, lastName, email, password, workplace, role) => {
+    await authService.register(firstName, lastName, email, password, workplace, role);
   }, []);
 
   const logout = useCallback(async () => {
@@ -98,6 +98,7 @@ export function AuthProvider({ children }) {
         user,
         isLoading,
         isAuthenticated: !!user,
+        isManager: user?.role === ROLES.MANAGER,
         isLocked,
         unlock,
         login,
