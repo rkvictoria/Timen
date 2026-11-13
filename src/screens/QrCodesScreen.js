@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Alert,
+  Animated,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -22,6 +23,20 @@ export default function QrCodesScreen({ navigation, route }) {
   const [name, setName] = useState('');
   const [isLoading, setIsLoading] = useState(true);
   const [isSaving, setIsSaving] = useState(false);
+  const backArrowOffset = useRef(new Animated.Value(0)).current;
+
+  useEffect(() => {
+    const animation = Animated.loop(
+      Animated.sequence([
+        Animated.timing(backArrowOffset, { toValue: -3, duration: 650, useNativeDriver: true }),
+        Animated.timing(backArrowOffset, { toValue: 0, duration: 650, useNativeDriver: true }),
+      ]),
+    );
+
+    animation.start();
+
+    return () => animation.stop();
+  }, [backArrowOffset]);
 
   useEffect(() => {
     getLocations()
@@ -52,7 +67,9 @@ export default function QrCodesScreen({ navigation, route }) {
 
       <View style={styles.header}>
         <Pressable accessibilityRole="button" accessibilityLabel="Voltar" onPress={() => navigation.goBack()}>
-          <Ionicons name="chevron-back" size={27} color={colors.background} />
+          <Animated.View style={{ transform: [{ translateX: backArrowOffset }] }}>
+            <Ionicons name="chevron-back" size={27} color={colors.background} />
+          </Animated.View>
         </Pressable>
         <Text style={styles.headerTitle}>QR Codes</Text>
         <View style={styles.headerSpacer} />

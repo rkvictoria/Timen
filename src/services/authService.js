@@ -42,6 +42,7 @@ function toSession(row) {
     photo: row.photo || null,
     role: row.role,
     active: !!row.active,
+    mustChangePassword: !!row.must_change_password,
   };
 }
 
@@ -208,8 +209,9 @@ export const authService = {
 
     await db.runAsync(
       `INSERT INTO users (
-        id, organization_id, first_name, last_name, email, password_hash, workplace, role, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+        id, organization_id, first_name, last_name, email, password_hash,
+        must_change_password, workplace, role, created_at
+      ) VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?, ?)`,
       [
         Crypto.randomUUID(),
         admin.organizationId,
@@ -239,11 +241,14 @@ export const authService = {
   },
 
   async updateEmail(email) {
-    const normalizedEmail = email.trim().toLowerCase();
-    if (!isValidEmail(normalizedEmail)) throw new Error('Insira um e-mail válido.');
-
     const session = await getSession();
     if (!session) throw new Error('Credenciais não encontradas.');
+    if (session.role !== ROLES.MANAGER) {
+      throw new Error('Somente o administrador pode alterar o e-mail.');
+    }
+
+    const normalizedEmail = email.trim().toLowerCase();
+    if (!isValidEmail(normalizedEmail)) throw new Error('Insira um e-mail válido.');
 
     const db = await getDb();
     await assertEmailAvailable(db, normalizedEmail, session.id);
@@ -304,10 +309,15 @@ export const authService = {
     if (!isMatch) throw new Error('Senha atual incorreta.');
 
     if (newPassword.length < 6) throw new Error('A nova senha deve ter no mínimo 6 caracteres.');
+    if (newPassword === currentPassword) throw new Error('A nova senha deve ser diferente da atual.');
 
     const salt = await bcrypt.genSalt(10);
     const passwordHash = await bcrypt.hash(newPassword, salt);
-    await db.runAsync('UPDATE users SET password_hash = ? WHERE id = ?', [passwordHash, session.id]);
+    await db.runAsync(
+      'UPDATE users SET password_hash = ?, must_change_password = 0 WHERE id = ?',
+      [passwordHash, session.id],
+    );
+    return getSession();
   },
 
   async updatePhoto(photoUri) {

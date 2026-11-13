@@ -1,5 +1,4 @@
 import { useState } from 'react';
-
 import {
   View,
   Text,
@@ -12,20 +11,62 @@ import {
   ActivityIndicator,
   ScrollView,
 } from 'react-native';
-
 import { Ionicons } from '@expo/vector-icons';
-
 import * as ImagePicker from 'expo-image-picker';
-
-import QRCode from 'react-native-qrcode-svg';
-
 import { useAuth } from '../hooks/useAuth';
-
 import { colors } from '../styles/colors';
+
+function EditModal({ visible, title, onCancel, onSave, isLoading, children }) {
+  return (
+    <Modal visible={visible} animationType="slide" transparent>
+      <View style={styles.modalOverlay}>
+        <View style={styles.modalContent}>
+          <Text style={styles.modalTitle}>{title}</Text>
+
+          {children}
+
+          <View style={styles.modalButtons}>
+            <Pressable style={styles.modalButtonCancel} onPress={onCancel}>
+              <Text style={styles.modalButtonTextDark}>Cancelar</Text>
+            </Pressable>
+
+            <Pressable style={styles.modalButtonSave} onPress={onSave}>
+              {isLoading ? (
+                <ActivityIndicator color={colors.background} />
+              ) : (
+                <Text style={styles.modalButtonText}>Salvar</Text>
+              )}
+            </Pressable>
+          </View>
+        </View>
+      </View>
+    </Modal>
+  );
+}
+
+function LockedRow({ icon, label, value, border }) {
+  return (
+    <View style={[styles.lockedRow, border && styles.lockedRowBorder]}>
+      <View style={styles.lockedIcon}>
+        <Ionicons name={icon} size={20} color={colors.background} />
+      </View>
+
+      <View style={styles.lockedText}>
+        <Text style={styles.cardEyebrow}>{label}</Text>
+        <Text style={styles.lockedValue} numberOfLines={1}>
+          {value}
+        </Text>
+      </View>
+
+      <Ionicons name="lock-closed" size={15} color={colors.disabled} />
+    </View>
+  );
+}
 
 export default function ProfileView() {
   const {
     user,
+    isManager,
     logout,
     updateProfile,
     updateEmail,
@@ -36,7 +77,6 @@ export default function ProfileView() {
   } = useAuth();
 
   const [modalVisible, setModalVisible] = useState(null);
-  const [qrVisible, setQrVisible] = useState(false);
 
   const [firstName, setFirstName] = useState(user?.firstName || '');
   const [lastName, setLastName] = useState(user?.lastName || '');
@@ -51,11 +91,7 @@ export default function ProfileView() {
   const fullName =
     `${user?.firstName || ''} ${user?.lastName || ''}`.trim() || 'Seu nome';
 
-  const qrValue = JSON.stringify({
-    app: 'Timen',
-    type: 'workplace',
-    workplace: user?.workplace || 'Local de trabalho',
-  });
+  const close = () => setModalVisible(null);
 
   const handlePickImage = async () => {
     const result = await ImagePicker.launchImageLibraryAsync({
@@ -69,10 +105,7 @@ export default function ProfileView() {
       try {
         await updatePhoto(result.assets[0].uri);
       } catch (err) {
-        Alert.alert(
-          'Erro',
-          err.message || 'Não foi possível atualizar a foto.',
-        );
+        Alert.alert('Erro', err.message || 'Não foi possível atualizar a foto.');
       }
     }
   };
@@ -87,7 +120,7 @@ export default function ProfileView() {
 
     try {
       await updateProfile(firstName, lastName);
-      setModalVisible(null);
+      close();
     } catch (err) {
       Alert.alert('Erro', err.message);
     } finally {
@@ -96,6 +129,8 @@ export default function ProfileView() {
   };
 
   const handleSaveEmail = async () => {
+    if (!isManager) return;
+
     if (!email.trim()) {
       Alert.alert('Erro', 'E-mail é obrigatório.');
       return;
@@ -105,7 +140,7 @@ export default function ProfileView() {
 
     try {
       await updateEmail(email);
-      setModalVisible(null);
+      close();
     } catch (err) {
       Alert.alert('Erro', err.message);
     } finally {
@@ -114,6 +149,8 @@ export default function ProfileView() {
   };
 
   const handleSaveWorkplace = async () => {
+    if (!isManager) return;
+
     if (!workplace.trim()) {
       Alert.alert('Erro', 'Local de trabalho é obrigatório.');
       return;
@@ -123,7 +160,7 @@ export default function ProfileView() {
 
     try {
       await updateWorkplace(workplace.trim());
-      setModalVisible(null);
+      close();
     } catch (err) {
       Alert.alert('Erro', err.message);
     } finally {
@@ -142,7 +179,7 @@ export default function ProfileView() {
     try {
       await updatePassword(currentPassword, newPassword);
 
-      setModalVisible(null);
+      close();
       setCurrentPassword('');
       setNewPassword('');
 
@@ -155,28 +192,155 @@ export default function ProfileView() {
   };
 
   const handleResetWorkplaceLocation = () => {
-    Alert.alert(
-      'Reiniciar local',
-      'Remover o local de trabalho marcado no mapa?',
-      [
-        {
-          text: 'Cancelar',
-          style: 'cancel',
+    Alert.alert('Reiniciar local', 'Remover o local de trabalho marcado no mapa?', [
+      { text: 'Cancelar', style: 'cancel' },
+      {
+        text: 'Reiniciar',
+        style: 'destructive',
+        onPress: async () => {
+          try {
+            await resetWorkplaceLocation();
+          } catch (err) {
+            Alert.alert('Erro', err.message);
+          }
         },
-        {
-          text: 'Reiniciar',
-          style: 'destructive',
-          onPress: async () => {
-            try {
-              await resetWorkplaceLocation();
-            } catch (err) {
-              Alert.alert('Erro', err.message);
-            }
-          },
-        },
-      ],
-    );
+      },
+    ]);
   };
+
+  const renderPersonalCard = (cardStyle) => (
+    <Pressable
+      style={({ pressed }) => [cardStyle, pressed && styles.cardPressed]}
+      onPress={() => setModalVisible('name')}
+    >
+      <View style={styles.personalTab}>
+        <Ionicons name="person-outline" size={20} color={colors.primary} />
+      </View>
+
+      <View style={[styles.personalFace, styles.cardShadow]}>
+        <Text style={styles.cardEyebrow}>DADOS PESSOAIS</Text>
+
+        <Text style={styles.personalName} numberOfLines={2}>
+          {fullName}
+        </Text>
+
+        <View style={styles.editRow}>
+          <Ionicons name="pencil" size={11} color={colors.disabled} />
+          <Text style={styles.editText}>Editar</Text>
+        </View>
+      </View>
+    </Pressable>
+  );
+
+  const renderSecurityCard = (cardStyle) => (
+    <Pressable
+      style={({ pressed }) => [cardStyle, pressed && styles.cardPressed]}
+      onPress={() => setModalVisible('password')}
+    >
+      <View style={styles.securityTopRow}>
+        <View style={styles.securityIcon}>
+          <Ionicons name="lock-closed-outline" size={19} color={colors.background} />
+        </View>
+
+        <Ionicons name="arrow-forward" size={18} color="#AAA49B" />
+      </View>
+
+      <View>
+        <Text style={styles.securityTitle}>Segurança</Text>
+        <Text style={styles.securityHint}>Senha e acesso</Text>
+      </View>
+    </Pressable>
+  );
+
+  const renderCollaboratorBody = () => (
+    <View style={styles.body}>
+      <View style={styles.sectionHeading}>
+        <Text style={styles.sectionTitle}>Seus dados</Text>
+        <Text style={styles.sectionHint}>Toque para editar</Text>
+      </View>
+
+      <View style={styles.gridCompact}>
+        {renderPersonalCard(styles.personalCardFill)}
+        {renderSecurityCard(styles.securityCardCompact)}
+      </View>
+
+
+
+      <Pressable style={styles.resetButton} onPress={handleResetWorkplaceLocation}>
+        <Ionicons name="refresh-outline" size={16} color={colors.disabled} />
+        <Text style={styles.resetButtonText}>Reiniciar local no mapa</Text>
+      </Pressable>
+    </View>
+  );
+
+  const renderManagerBody = () => (
+    <View style={styles.body}>
+      <View style={styles.sectionHeading}>
+        <Text style={styles.sectionTitle}>Atividades</Text>
+        <Text style={styles.sectionHint}>Toque para editar</Text>
+      </View>
+
+      <View style={styles.grid}>
+        <View style={styles.gridLeft}>
+          {renderPersonalCard(styles.personalCard)}
+          {renderSecurityCard(styles.securityCard)}
+        </View>
+
+        <Pressable
+          style={({ pressed }) => [styles.emailCard, pressed && styles.cardPressed]}
+          onPress={() => setModalVisible('email')}
+        >
+          <View style={styles.emailTab}>
+            <Ionicons name="mail-outline" size={22} color={colors.background} />
+          </View>
+
+          <View style={[styles.emailFace, styles.cardShadow]}>
+            <Text style={styles.emailAt}>@</Text>
+            <Text style={styles.cardEyebrow}>E-MAIL</Text>
+
+            <Text style={styles.emailValue} numberOfLines={2}>
+              {user?.email}
+            </Text>
+
+            <View style={styles.editRow}>
+              <Ionicons name="pencil" size={11} color={colors.disabled} />
+              <Text style={styles.editText}>Editar</Text>
+            </View>
+          </View>
+        </Pressable>
+      </View>
+
+      <Pressable
+        style={({ pressed }) => [
+          styles.workplaceCard,
+          styles.cardShadow,
+          pressed && styles.cardPressed,
+        ]}
+        onPress={() => setModalVisible('workplace')}
+      >
+        <View style={styles.workplaceIcon}>
+          <Ionicons name="business-outline" size={22} color={colors.background} />
+        </View>
+
+        <View style={styles.workplaceText}>
+          <Text style={styles.cardEyebrow}>LOCAL DE TRABALHO</Text>
+
+          <Text style={styles.workplaceName} numberOfLines={1}>
+            {user?.workplace || 'Definir local'}
+          </Text>
+        </View>
+
+        <View style={styles.workplaceArrow}>
+          <Ionicons name="arrow-forward" size={16} color={colors.primary} />
+        </View>
+      </Pressable>
+
+      <Pressable style={styles.resetButton} onPress={handleResetWorkplaceLocation}>
+        <Ionicons name="refresh-outline" size={16} color={colors.disabled} />
+        <Text style={styles.resetButtonText}>Reiniciar local no mapa</Text>
+      </Pressable>
+    </View>
+  );
 
   return (
     <View style={styles.container}>
@@ -191,21 +355,14 @@ export default function ProfileView() {
             <Text style={styles.headerTitle}>Perfil</Text>
 
             <Pressable onPress={logout} hitSlop={8}>
-              <Ionicons
-                name="log-out-outline"
-                size={22}
-                color={colors.background}
-              />
+              <Ionicons name="log-out-outline" size={22} color={colors.background} />
             </Pressable>
           </View>
 
           <View style={styles.headerInfo}>
             <Text style={styles.userName}>{user?.firstName}</Text>
-
             <Text style={styles.userLastName}>{user?.lastName}</Text>
-
             <Text style={styles.userEmail}>{user?.email}</Text>
-
             <Text style={styles.companyName}>
               {user?.workplace || 'Local de trabalho'}
             </Text>
@@ -217,353 +374,73 @@ export default function ProfileView() {
             {user?.photo ? (
               <Image source={{ uri: user.photo }} style={styles.photo} />
             ) : (
-              <Ionicons
-                name="person"
-                size={50}
-                color={colors.disabled}
-              />
+              <Ionicons name="person" size={50} color={colors.disabled} />
             )}
 
             <View style={styles.editBadge}>
-              <Ionicons
-                name="pencil"
-                size={12}
-                color={colors.background}
-              />
+              <Ionicons name="pencil" size={12} color={colors.background} />
             </View>
           </Pressable>
         </View>
 
-        <View style={styles.body}>
-          <View style={styles.sectionHeading}>
-            <Text style={styles.sectionTitle}>Atividades</Text>
-
-            <Text style={styles.sectionHint}>Toque para editar</Text>
-          </View>
-
-          <View style={styles.grid}>
-            <View style={styles.gridLeft}>
-              <Pressable
-                style={({ pressed }) => [
-                  styles.personalCard,
-                  pressed && styles.cardPressed,
-                ]}
-                onPress={() => setModalVisible('name')}
-              >
-                <View style={styles.personalTab}>
-                  <Ionicons
-                    name="person-outline"
-                    size={20}
-                    color={colors.primary}
-                  />
-                </View>
-
-                <View style={[styles.personalFace, styles.cardShadow]}>
-                  <Text style={styles.cardEyebrow}>
-                    DADOS PESSOAIS
-                  </Text>
-
-                  <Text
-                    style={styles.personalName}
-                    numberOfLines={2}
-                  >
-                    {fullName}
-                  </Text>
-
-                  <View style={styles.editRow}>
-                    <Ionicons
-                      name="pencil"
-                      size={11}
-                      color={colors.disabled}
-                    />
-
-                    <Text style={styles.editText}>Editar</Text>
-                  </View>
-                </View>
-              </Pressable>
-
-              <Pressable
-                style={({ pressed }) => [
-                  styles.securityCard,
-                  pressed && styles.cardPressed,
-                ]}
-                onPress={() => setModalVisible('password')}
-              >
-                <View style={styles.securityTopRow}>
-                  <View style={styles.securityIcon}>
-                    <Ionicons
-                      name="lock-closed-outline"
-                      size={19}
-                      color={colors.background}
-                    />
-                  </View>
-
-                  <Ionicons
-                    name="arrow-up-right"
-                    size={18}
-                    color="#AAA49B"
-                  />
-                </View>
-
-                <View>
-                  <Text style={styles.securityTitle}>
-                    Segurança
-                  </Text>
-
-                  <Text style={styles.securityHint}>
-                    Senha e acesso
-                  </Text>
-                </View>
-              </Pressable>
-            </View>
-
-            <Pressable
-              style={({ pressed }) => [
-                styles.emailCard,
-                pressed && styles.cardPressed,
-              ]}
-              onPress={() => setModalVisible('email')}
-            >
-              <View style={styles.emailTab}>
-                <Ionicons
-                  name="mail-outline"
-                  size={22}
-                  color={colors.background}
-                />
-              </View>
-
-              <View style={[styles.emailFace, styles.cardShadow]}>
-                <Text style={styles.emailAt}>@</Text>
-
-                <Text style={styles.cardEyebrow}>E-MAIL</Text>
-
-                <Text
-                  style={styles.emailValue}
-                  numberOfLines={2}
-                >
-                  {user?.email}
-                </Text>
-
-                <View style={styles.editRow}>
-                  <Ionicons
-                    name="pencil"
-                    size={11}
-                    color={colors.disabled}
-                  />
-
-                  <Text style={styles.editText}>Editar</Text>
-                </View>
-              </View>
-            </Pressable>
-          </View>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.workplaceCard,
-              styles.cardShadow,
-              pressed && styles.cardPressed,
-            ]}
-            onPress={() => setModalVisible('workplace')}
-          >
-            <View style={styles.workplaceIcon}>
-              <Ionicons
-                name="business-outline"
-                size={22}
-                color={colors.background}
-              />
-            </View>
-
-            <View style={styles.workplaceText}>
-              <Text style={styles.cardEyebrow}>
-                LOCAL DE TRABALHO
-              </Text>
-
-              <Text
-                style={styles.workplaceName}
-                numberOfLines={1}
-              >
-                {user?.workplace || 'Definir local'}
-              </Text>
-            </View>
-
-            <View style={styles.workplaceArrow}>
-              <Ionicons
-                name="arrow-up-right"
-                size={16}
-                color={colors.primary}
-              />
-            </View>
-          </Pressable>
-
-          <Pressable
-            style={({ pressed }) => [
-              styles.qrButton,
-              pressed && styles.cardPressed,
-            ]}
-            onPress={() => setQrVisible(true)}
-          >
-            <View style={styles.qrButtonIcon}>
-              <Ionicons
-                name="qr-code-outline"
-                size={20}
-                color={colors.primary}
-              />
-            </View>
-
-            <View style={styles.qrButtonTextContainer}>
-              <Text style={styles.qrButtonTitle}>
-                QR Code do local
-              </Text>
-
-              <Text style={styles.qrButtonHint}>
-                Exibir código para registrar o ponto
-              </Text>
-            </View>
-
-            <Ionicons
-              name="arrow-forward"
-              size={18}
-              color={colors.primary}
-            />
-          </Pressable>
-
-          <Pressable
-            style={styles.resetButton}
-            onPress={handleResetWorkplaceLocation}
-          >
-            <Ionicons
-              name="refresh-outline"
-              size={16}
-              color={colors.disabled}
-            />
-
-            <Text style={styles.resetButtonText}>
-              Reiniciar local no mapa
-            </Text>
-          </Pressable>
-        </View>
+        {isManager ? renderManagerBody() : renderCollaboratorBody()}
       </ScrollView>
 
-      <Modal
-        visible={qrVisible}
-        animationType="slide"
-        transparent
-        onRequestClose={() => setQrVisible(false)}
-      >
-        <View style={styles.qrModalOverlay}>
-          <View style={styles.qrModalContent}>
-            <Pressable
-              style={styles.qrCloseButton}
-              onPress={() => setQrVisible(false)}
-            >
-              <Ionicons
-                name="close"
-                size={22}
-                color={colors.text}
-              />
-            </Pressable>
-
-            <Text style={styles.qrModalTitle}>
-              QR Code do local
-            </Text>
-
-            <Text style={styles.qrModalSubtitle}>
-              Aponte a câmera do Timen para este código.
-            </Text>
-
-            <View style={styles.qrCodeContainer}>
-              <QRCode
-                value={qrValue}
-                size={240}
-                backgroundColor="#FFFFFF"
-                color="#1C1B18"
-              />
-            </View>
-
-            <Text style={styles.qrWorkplaceName}>
-              {user?.workplace || 'Local de trabalho'}
-            </Text>
-
-            <Text style={styles.qrModalHint}>
-              Este código identifica o local de trabalho
-              configurado.
-            </Text>
-
-            <Pressable
-              style={styles.qrDoneButton}
-              onPress={() => setQrVisible(false)}
-            >
-              <Text style={styles.qrDoneButtonText}>
-                Fechar
-              </Text>
-            </Pressable>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
+      <EditModal
         visible={modalVisible === 'name'}
-        animationType="slide"
-        transparent
+        title="Editar Nome"
+        onCancel={close}
+        onSave={handleSaveName}
+        isLoading={isLoading}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>Editar Nome</Text>
+        <TextInput
+          style={styles.input}
+          value={firstName}
+          onChangeText={setFirstName}
+          placeholder="Nome"
+        />
 
-            <TextInput
-              style={styles.input}
-              value={firstName}
-              onChangeText={setFirstName}
-              placeholder="Nome"
-            />
+        <TextInput
+          style={styles.input}
+          value={lastName}
+          onChangeText={setLastName}
+          placeholder="Sobrenome"
+        />
+      </EditModal>
 
-            <TextInput
-              style={styles.input}
-              value={lastName}
-              onChangeText={setLastName}
-              placeholder="Sobrenome"
-            />
-
-            <View style={styles.modalButtons}>
-              <Pressable
-                style={styles.modalButtonCancel}
-                onPress={() => setModalVisible(null)}
-              >
-                <Text style={styles.modalButtonTextDark}>
-                  Cancelar
-                </Text>
-              </Pressable>
-
-              <Pressable
-                style={styles.modalButtonSave}
-                onPress={handleSaveName}
-              >
-                {isLoading ? (
-                  <ActivityIndicator
-                    color={colors.background}
-                  />
-                ) : (
-                  <Text style={styles.modalButtonText}>
-                    Salvar
-                  </Text>
-                )}
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={modalVisible === 'email'}
-        animationType="slide"
-        transparent
+      <EditModal
+        visible={modalVisible === 'password'}
+        title="Alterar Senha"
+        onCancel={close}
+        onSave={handleSavePassword}
+        isLoading={isLoading}
       >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              Editar E-mail
-            </Text>
+        <TextInput
+          style={styles.input}
+          value={currentPassword}
+          onChangeText={setCurrentPassword}
+          placeholder="Senha atual"
+          secureTextEntry
+        />
 
+        <TextInput
+          style={styles.input}
+          value={newPassword}
+          onChangeText={setNewPassword}
+          placeholder="Nova senha"
+          secureTextEntry
+        />
+      </EditModal>
+
+      {isManager && (
+        <>
+          <EditModal
+            visible={modalVisible === 'email'}
+            title="Editar E-mail"
+            onCancel={close}
+            onSave={handleSaveEmail}
+            isLoading={isLoading}
+          >
             <TextInput
               style={styles.input}
               value={email}
@@ -572,155 +449,32 @@ export default function ProfileView() {
               keyboardType="email-address"
               autoCapitalize="none"
             />
+          </EditModal>
 
-            <View style={styles.modalButtons}>
-              <Pressable
-                style={styles.modalButtonCancel}
-                onPress={() => setModalVisible(null)}
-              >
-                <Text style={styles.modalButtonTextDark}>
-                  Cancelar
-                </Text>
-              </Pressable>
-
-              <Pressable
-                style={styles.modalButtonSave}
-                onPress={handleSaveEmail}
-              >
-                {isLoading ? (
-                  <ActivityIndicator
-                    color={colors.background}
-                  />
-                ) : (
-                  <Text style={styles.modalButtonText}>
-                    Salvar
-                  </Text>
-                )}
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={modalVisible === 'workplace'}
-        animationType="slide"
-        transparent
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              Local de trabalho
-            </Text>
-
+          <EditModal
+            visible={modalVisible === 'workplace'}
+            title="Local de trabalho"
+            onCancel={close}
+            onSave={handleSaveWorkplace}
+            isLoading={isLoading}
+          >
             <TextInput
               style={styles.input}
               value={workplace}
               onChangeText={setWorkplace}
               placeholder="Nome do local de trabalho"
             />
-
-            <View style={styles.modalButtons}>
-              <Pressable
-                style={styles.modalButtonCancel}
-                onPress={() => setModalVisible(null)}
-              >
-                <Text style={styles.modalButtonTextDark}>
-                  Cancelar
-                </Text>
-              </Pressable>
-
-              <Pressable
-                style={styles.modalButtonSave}
-                onPress={handleSaveWorkplace}
-              >
-                {isLoading ? (
-                  <ActivityIndicator
-                    color={colors.background}
-                  />
-                ) : (
-                  <Text style={styles.modalButtonText}>
-                    Salvar
-                  </Text>
-                )}
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
-
-      <Modal
-        visible={modalVisible === 'password'}
-        animationType="slide"
-        transparent
-      >
-        <View style={styles.modalOverlay}>
-          <View style={styles.modalContent}>
-            <Text style={styles.modalTitle}>
-              Alterar Senha
-            </Text>
-
-            <TextInput
-              style={styles.input}
-              value={currentPassword}
-              onChangeText={setCurrentPassword}
-              placeholder="Senha atual"
-              secureTextEntry
-            />
-
-            <TextInput
-              style={styles.input}
-              value={newPassword}
-              onChangeText={setNewPassword}
-              placeholder="Nova senha"
-              secureTextEntry
-            />
-
-            <View style={styles.modalButtons}>
-              <Pressable
-                style={styles.modalButtonCancel}
-                onPress={() => setModalVisible(null)}
-              >
-                <Text style={styles.modalButtonTextDark}>
-                  Cancelar
-                </Text>
-              </Pressable>
-
-              <Pressable
-                style={styles.modalButtonSave}
-                onPress={handleSavePassword}
-              >
-                {isLoading ? (
-                  <ActivityIndicator
-                    color={colors.background}
-                  />
-                ) : (
-                  <Text style={styles.modalButtonText}>
-                    Salvar
-                  </Text>
-                )}
-              </Pressable>
-            </View>
-          </View>
-        </View>
-      </Modal>
+          </EditModal>
+        </>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-
-  scrollView: {
-    flex: 1,
-  },
-
-  scrollContent: {
-    paddingBottom: 140,
-  },
+  container: { flex: 1, backgroundColor: colors.background },
+  scrollView: { flex: 1 },
+  scrollContent: { paddingBottom: 140 },
 
   header: {
     backgroundColor: colors.primary,
@@ -729,19 +483,12 @@ const styles = StyleSheet.create({
     paddingHorizontal: 24,
     paddingTop: 48,
   },
-
   headerTopRow: {
     alignItems: 'center',
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-
-  headerTitle: {
-    color: colors.background,
-    fontSize: 30,
-    fontWeight: '700',
-  },
-
+  headerTitle: { color: colors.background, fontSize: 30, fontWeight: '700' },
   headerInfo: {
     alignItems: 'flex-start',
     position: 'absolute',
@@ -749,21 +496,12 @@ const styles = StyleSheet.create({
     top: 142,
     width: 168,
   },
-
   userName: {
     color: colors.background,
     fontSize: 18,
     fontWeight: '700',
     textAlign: 'left',
   },
-
-  userEmail: {
-    color: '#D8D2C9',
-    fontSize: 13,
-    marginTop: 4,
-    textAlign: 'left',
-  },
-
   userLastName: {
     color: colors.background,
     fontSize: 18,
@@ -771,7 +509,7 @@ const styles = StyleSheet.create({
     lineHeight: 21,
     textAlign: 'left',
   },
-
+  userEmail: { color: '#D8D2C9', fontSize: 13, marginTop: 4, textAlign: 'left' },
   companyName: {
     color: '#D6A85F',
     fontSize: 12,
@@ -781,12 +519,7 @@ const styles = StyleSheet.create({
     textTransform: 'uppercase',
   },
 
-  photoContainerWrapper: {
-    marginTop: -154,
-    marginLeft: 30,
-    zIndex: 10,
-  },
-
+  photoContainerWrapper: { marginTop: -154, marginLeft: 30, zIndex: 10 },
   photoContainer: {
     width: 132,
     height: 174,
@@ -795,22 +528,13 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.15,
     shadowRadius: 15,
     elevation: 8,
     overflow: 'hidden',
   },
-
-  photo: {
-    width: '100%',
-    height: '100%',
-    borderRadius: 24,
-  },
-
+  photo: { width: '100%', height: '100%', borderRadius: 24 },
   editBadge: {
     position: 'absolute',
     bottom: 10,
@@ -825,57 +549,29 @@ const styles = StyleSheet.create({
     borderColor: '#EAE5DE',
   },
 
-  body: {
-    paddingHorizontal: 24,
-    paddingTop: 30,
-  },
-
+  body: { paddingHorizontal: 24, paddingTop: 30 },
   sectionHeading: {
     alignItems: 'flex-end',
     flexDirection: 'row',
     justifyContent: 'space-between',
     marginBottom: 14,
   },
+  sectionSpaced: { marginTop: 26 },
+  sectionTitle: { fontSize: 20, fontWeight: '700', color: colors.text },
+  sectionHint: { color: colors.disabled, fontSize: 11 },
 
-  sectionTitle: {
-    fontSize: 20,
-    fontWeight: '700',
-    color: colors.text,
-    marginBottom: 0,
-  },
-
-  sectionHint: {
-    color: colors.disabled,
-    fontSize: 11,
-  },
-
-  grid: {
-    flexDirection: 'row',
-    gap: 12,
-    height: 214,
-    marginBottom: 12,
-  },
-
-  gridLeft: {
-    flex: 1.35,
-    gap: 12,
-  },
+  grid: { flexDirection: 'row', gap: 12, height: 214, marginBottom: 12 },
+  gridLeft: { flex: 1.35, gap: 12 },
+  gridCompact: { flexDirection: 'row', gap: 12, height: 132 },
 
   cardShadow: {
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 6,
-    },
+    shadowOffset: { width: 0, height: 6 },
     shadowOpacity: 0.08,
     shadowRadius: 12,
     elevation: 3,
   },
-
-  cardPressed: {
-    transform: [{ scale: 0.97 }],
-  },
-
+  cardPressed: { transform: [{ scale: 0.97 }] },
   cardEyebrow: {
     color: colors.disabled,
     fontSize: 9,
@@ -883,24 +579,11 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginBottom: 6,
   },
+  editRow: { alignItems: 'center', flexDirection: 'row', gap: 4, marginTop: 8 },
+  editText: { color: colors.disabled, fontSize: 10, fontWeight: '600' },
 
-  editRow: {
-    alignItems: 'center',
-    flexDirection: 'row',
-    gap: 4,
-    marginTop: 8,
-  },
-
-  editText: {
-    color: colors.disabled,
-    fontSize: 10,
-    fontWeight: '600',
-  },
-
-  personalCard: {
-    height: 100,
-  },
-
+  personalCard: { height: 100 },
+  personalCardFill: { flex: 1.35 },
   personalTab: {
     alignItems: 'flex-end',
     backgroundColor: '#D6A85F',
@@ -913,7 +596,6 @@ const styles = StyleSheet.create({
     top: 10,
     width: 64,
   },
-
   personalFace: {
     backgroundColor: '#FFFFFF',
     borderColor: '#EAE5DE',
@@ -927,7 +609,6 @@ const styles = StyleSheet.create({
     right: 34,
     top: 0,
   },
-
   personalName: {
     color: colors.text,
     fontSize: 15,
@@ -943,13 +624,19 @@ const styles = StyleSheet.create({
     justifyContent: 'space-between',
     padding: 14,
   },
-
+  securityCardCompact: {
+    backgroundColor: colors.primary,
+    borderBottomRightRadius: 46,
+    borderRadius: 22,
+    flex: 1,
+    justifyContent: 'space-between',
+    padding: 14,
+  },
   securityTopRow: {
     alignItems: 'flex-start',
     flexDirection: 'row',
     justifyContent: 'space-between',
   },
-
   securityIcon: {
     alignItems: 'center',
     backgroundColor: '#383631',
@@ -958,23 +645,10 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 36,
   },
+  securityTitle: { color: colors.background, fontSize: 15, fontWeight: '700' },
+  securityHint: { color: '#C7C0B7', fontSize: 10, marginTop: 2 },
 
-  securityTitle: {
-    color: colors.background,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-
-  securityHint: {
-    color: '#C7C0B7',
-    fontSize: 10,
-    marginTop: 2,
-  },
-
-  emailCard: {
-    flex: 1,
-  },
-
+  emailCard: { flex: 1 },
   emailTab: {
     alignItems: 'center',
     backgroundColor: colors.primary,
@@ -986,7 +660,6 @@ const styles = StyleSheet.create({
     right: 0,
     top: 0,
   },
-
   emailFace: {
     alignItems: 'center',
     backgroundColor: '#FFFFFF',
@@ -1002,7 +675,6 @@ const styles = StyleSheet.create({
     right: 0,
     top: 46,
   },
-
   emailAt: {
     color: colors.text,
     fontSize: 38,
@@ -1010,7 +682,6 @@ const styles = StyleSheet.create({
     lineHeight: 42,
     marginBottom: 4,
   },
-
   emailValue: {
     color: colors.text,
     fontSize: 11,
@@ -1030,7 +701,6 @@ const styles = StyleSheet.create({
     paddingHorizontal: 14,
     paddingVertical: 12,
   },
-
   workplaceIcon: {
     alignItems: 'center',
     backgroundColor: colors.primary,
@@ -1039,65 +709,49 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     width: 44,
   },
-
-  workplaceText: {
-    flex: 1,
-    marginLeft: 12,
-  },
-
-  workplaceName: {
-    color: colors.text,
-    fontSize: 15,
-    fontWeight: '700',
-  },
-
+  workplaceText: { flex: 1, marginLeft: 12 },
+  workplaceName: { color: colors.text, fontSize: 15, fontWeight: '700' },
   workplaceArrow: {
     alignItems: 'center',
     backgroundColor: '#D6A85F',
     borderRadius: 16,
     height: 32,
     justifyContent: 'center',
-    marginLeft: 8,
-    marginRight: 8,
+    marginHorizontal: 8,
     width: 32,
   },
 
-  qrButton: {
-    alignItems: 'center',
-    backgroundColor: '#FCFAF8',
+  lockedCard: {
+    backgroundColor: '#FFFFFF',
     borderColor: '#EAE5DE',
-    borderRadius: 18,
+    borderRadius: 22,
+    borderTopRightRadius: 46,
     borderWidth: 1,
-    flexDirection: 'row',
-    marginTop: 10,
-    paddingHorizontal: 14,
-    paddingVertical: 13,
+    overflow: 'hidden',
   },
-
-  qrButtonIcon: {
+  lockedRow: {
     alignItems: 'center',
-    backgroundColor: '#EAE5DE',
-    borderRadius: 12,
-    height: 40,
+    flexDirection: 'row',
+    paddingHorizontal: 16,
+    paddingVertical: 14,
+  },
+  lockedRowBorder: { borderTopColor: '#EAE5DE', borderTopWidth: 1 },
+  lockedIcon: {
+    alignItems: 'center',
+    backgroundColor: colors.primary,
+    borderRadius: 14,
+    height: 44,
     justifyContent: 'center',
-    width: 40,
+    width: 44,
   },
-
-  qrButtonTextContainer: {
-    flex: 1,
-    marginLeft: 12,
-  },
-
-  qrButtonTitle: {
-    color: colors.text,
-    fontSize: 14,
-    fontWeight: '700',
-  },
-
-  qrButtonHint: {
+  lockedText: { flex: 1, marginHorizontal: 12 },
+  lockedValue: { color: colors.text, fontSize: 15, fontWeight: '700' },
+  lockedNote: {
     color: colors.disabled,
-    fontSize: 10,
-    marginTop: 3,
+    fontSize: 11,
+    lineHeight: 16,
+    marginTop: 12,
+    paddingHorizontal: 4,
   },
 
   resetButton: {
@@ -1105,14 +759,10 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     flexDirection: 'row',
     gap: 6,
+    marginTop: 14,
     paddingVertical: 8,
   },
-
-  resetButtonText: {
-    color: colors.disabled,
-    fontSize: 12,
-    fontWeight: '600',
-  },
+  resetButtonText: { color: colors.disabled, fontSize: 12, fontWeight: '600' },
 
   modalOverlay: {
     flex: 1,
@@ -1121,22 +771,17 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     padding: 20,
   },
-
   modalContent: {
     backgroundColor: colors.background,
     borderRadius: 24,
     padding: 24,
     width: '100%',
     shadowColor: '#000',
-    shadowOffset: {
-      width: 0,
-      height: 10,
-    },
+    shadowOffset: { width: 0, height: 10 },
     shadowOpacity: 0.2,
     shadowRadius: 20,
     elevation: 10,
   },
-
   modalTitle: {
     fontSize: 18,
     fontWeight: '700',
@@ -1144,7 +789,6 @@ const styles = StyleSheet.create({
     marginBottom: 20,
     textAlign: 'center',
   },
-
   input: {
     backgroundColor: '#FFFFFF',
     borderWidth: 1,
@@ -1156,21 +800,18 @@ const styles = StyleSheet.create({
     marginBottom: 16,
     color: colors.text,
   },
-
   modalButtons: {
     flexDirection: 'row',
     justifyContent: 'flex-end',
     gap: 12,
     marginTop: 8,
   },
-
   modalButtonCancel: {
     paddingVertical: 12,
     paddingHorizontal: 20,
     borderRadius: 12,
     backgroundColor: '#EAE5DE',
   },
-
   modalButtonSave: {
     paddingVertical: 12,
     paddingHorizontal: 20,
@@ -1179,98 +820,6 @@ const styles = StyleSheet.create({
     minWidth: 90,
     alignItems: 'center',
   },
-
-  modalButtonText: {
-    color: colors.background,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-
-  modalButtonTextDark: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-
-  qrModalOverlay: {
-    alignItems: 'center',
-    backgroundColor: 'rgba(0,0,0,0.55)',
-    flex: 1,
-    justifyContent: 'center',
-    padding: 20,
-  },
-
-  qrModalContent: {
-    alignItems: 'center',
-    backgroundColor: colors.background,
-    borderRadius: 28,
-    paddingHorizontal: 24,
-    paddingVertical: 28,
-    width: '100%',
-    maxWidth: 420,
-  },
-
-  qrCloseButton: {
-    alignItems: 'center',
-    alignSelf: 'flex-end',
-    backgroundColor: '#EAE5DE',
-    borderRadius: 18,
-    height: 36,
-    justifyContent: 'center',
-    width: 36,
-  },
-
-  qrModalTitle: {
-    color: colors.text,
-    fontSize: 22,
-    fontWeight: '700',
-    marginTop: 8,
-  },
-
-  qrModalSubtitle: {
-    color: colors.disabled,
-    fontSize: 12,
-    lineHeight: 18,
-    marginBottom: 22,
-    marginTop: 6,
-    textAlign: 'center',
-  },
-
-  qrCodeContainer: {
-    alignItems: 'center',
-    backgroundColor: '#FFFFFF',
-    borderRadius: 20,
-    padding: 18,
-  },
-
-  qrWorkplaceName: {
-    color: colors.text,
-    fontSize: 16,
-    fontWeight: '700',
-    marginTop: 18,
-  },
-
-  qrModalHint: {
-    color: colors.disabled,
-    fontSize: 11,
-    lineHeight: 17,
-    marginTop: 5,
-    textAlign: 'center',
-  },
-
-  qrDoneButton: {
-    alignItems: 'center',
-    backgroundColor: colors.primary,
-    borderRadius: 24,
-    justifyContent: 'center',
-    marginTop: 22,
-    minHeight: 48,
-    width: '100%',
-  },
-
-  qrDoneButtonText: {
-    color: colors.background,
-    fontSize: 14,
-    fontWeight: '700',
-  },
+  modalButtonText: { color: colors.background, fontSize: 16, fontWeight: '600' },
+  modalButtonTextDark: { color: colors.text, fontSize: 16, fontWeight: '600' },
 });
