@@ -29,7 +29,7 @@
       [
         "expo-location",
         {
-          "locationWhenInUsePermission": "Permita que o Timen use sua localização para validar o ponto."
+          "locationWhenInUsePermission": "Permita que o Timen use sua localização para consultar o clima e validar o ponto."
         }
       ],
       "expo-status-bar",
