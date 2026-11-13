@@ -174,6 +174,7 @@ export default function HomeScreen({ navigation }) {
         ) : (
           <>
             <View style={styles.darkHeader}>
+              <Text style={styles.brand}>Timen.</Text>
             </View>
             
             <View style={styles.sheet}>
@@ -238,7 +239,8 @@ export default function HomeScreen({ navigation }) {
 }
 
 const styles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: colors.primary }, darkHeader: { alignItems: 'flex-end', height: 94, paddingHorizontal: 22, paddingTop: 16 },
+  root: { flex: 1, backgroundColor: colors.primary }, darkHeader: { alignItems: 'center', height: 94, paddingTop: 12 },
+  brand: { color: colors.background, fontSize: 20, fontWeight: '600', letterSpacing: -0.5 },
   tabContent: { flex: 1 },
   logoutButton: { borderColor: '#6C6861', borderRadius: 16, borderWidth: 1, paddingHorizontal: 13, paddingVertical: 7 }, logoutButtonPressed: { opacity: .7 }, logoutText: { color: colors.background, fontSize: 12, fontWeight: '600' },
   sheet: { flex: 1, backgroundColor: colors.background, borderTopLeftRadius: 40, borderTopRightRadius: 40 }, content: { flexGrow: 1, padding: 22, paddingTop: 34, paddingBottom: 0 },
