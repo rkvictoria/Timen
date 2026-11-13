@@ -5,6 +5,7 @@ import { useAuth } from '../hooks/useAuth';
 import { authService, ROLES } from '../services/authService';
 import { getLocations } from '../services/locationService';
 import { getNextPointType, getTodayPoints, pointOrder } from '../services/pointService';
+import { getWeatherMessageForCurrentLocation } from '../services/weatherService';
 
 const STATUS = {
   working: { label: 'Trabalhando', color: '#A9C9B0' },
@@ -34,6 +35,7 @@ export default function ManagerDashboard({ navigation }) {
   const [statuses, setStatuses] = useState([]);
   const [locationCount, setLocationCount] = useState(0);
   const [isLoading, setIsLoading] = useState(true);
+  const [weatherMessage, setWeatherMessage] = useState(null);
 
   const firstName = useMemo(() => {
     if (user?.firstName) return user.firstName;
@@ -74,6 +76,12 @@ export default function ManagerDashboard({ navigation }) {
     return navigation.addListener('focus', load);
   }, [load, navigation]);
 
+  useEffect(() => {
+    getWeatherMessageForCurrentLocation()
+      .then(setWeatherMessage)
+      .catch(() => setWeatherMessage('Não foi possível atualizar o clima agora.'));
+  }, []);
+
   const counts = STATUS_ORDER.reduce(
     (acc, key) => ({ ...acc, [key]: statuses.filter((status) => status === key).length }),
     {},
@@ -93,6 +101,7 @@ export default function ManagerDashboard({ navigation }) {
           <View style={styles.greetingBlock}>
             <Text style={styles.greeting}>{greeting()},</Text>
             <Text style={styles.name}>{firstName}.</Text>
+            {!!weatherMessage && <Text style={styles.weatherMessage}>{weatherMessage}</Text>}
             <Text style={styles.date}>
               {new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }).format(new Date())}
             </Text>
@@ -189,6 +198,7 @@ const styles = StyleSheet.create({
   greetingBlock: { marginBottom: 26 },
   greeting: { color: colors.text, fontSize: 28, lineHeight: 34 },
   name: { color: colors.text, fontSize: 28, fontWeight: '600', lineHeight: 34 },
+  weatherMessage: { color: colors.text, fontSize: 15, marginTop: 10 },
   date: { color: colors.disabled, fontSize: 13, marginTop: 8, textTransform: 'capitalize' },
 
   journeyCard: {

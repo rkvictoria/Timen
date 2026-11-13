@@ -9,6 +9,7 @@ import ProfileView from '../components/ProfileView';
 import HistoryView from '../components/HistoryView';
 import ManagerDashboard from '../components/ManagerDashboard';
 import { getNextPointType, getTodayPoints, pointLabels, pointOrder, workedMsForPoints } from '../services/pointService';
+import { getWeatherMessageForCurrentLocation } from '../services/weatherService';
 import { formatTime } from '../utils/format';
 
 const tabs = ['home', 'history', 'register', 'profile'];
@@ -25,6 +26,7 @@ function nextActionLabel(type) {
 export default function HomeScreen({ navigation }) {
   const { user, logout, isManager } = useAuth();
   const [points, setPoints] = useState({});
+  const [weatherMessage, setWeatherMessage] = useState(null);
   const [activeTab, setActiveTab] = useState('home');
   const tabPosition = useRef(new Animated.Value(0)).current;
   const contentOpacity = useRef(new Animated.Value(1)).current;
@@ -53,6 +55,9 @@ export default function HomeScreen({ navigation }) {
 
   useEffect(() => {
     refreshPoints();
+    getWeatherMessageForCurrentLocation()
+      .then(setWeatherMessage)
+      .catch(() => setWeatherMessage('Não foi possível atualizar o clima agora.'));
   }, []);
 
   useEffect(() => navigation.addListener('focus', () => {
@@ -181,6 +186,7 @@ export default function HomeScreen({ navigation }) {
             <View style={styles.greetingBlock}>
               <Text style={styles.greeting}>{greeting()},</Text>
               <Text style={styles.name}>{firstName}.</Text>
+              {!!weatherMessage && <Text style={styles.weatherMessage}>{weatherMessage}</Text>}
               <Text style={styles.date}>{new Intl.DateTimeFormat('pt-BR', { weekday: 'long', day: '2-digit', month: 'long' }).format(new Date())}</Text>
             </View>
 
@@ -246,7 +252,7 @@ const styles = StyleSheet.create({
   tabIndicator: { backgroundColor: '#383631', borderRadius: 14, elevation: 5, height: 50, position: 'absolute', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: .22, shadowRadius: 5, width: 50 },
   navItem: { alignItems: 'center', flex: 1, height: 48, justifyContent: 'center', zIndex: 1 },
   mainNavItem: { alignItems: 'center', backgroundColor: colors.background, borderRadius: 14, height: 50, justifyContent: 'center', width: 50, zIndex: 1 }, mainNavItemActive: { transform: [{ scale: 1.04 }] },
-  greetingBlock: { marginBottom: 26 }, greeting: { color: colors.text, fontSize: 28, lineHeight: 34 }, name: { color: colors.text, fontSize: 28, fontWeight: '600', lineHeight: 34 }, date: { color: colors.disabled, fontSize: 13, marginTop: 8, textTransform: 'capitalize' },
+  greetingBlock: { marginBottom: 26 }, greeting: { color: colors.text, fontSize: 28, lineHeight: 34 }, name: { color: colors.text, fontSize: 28, fontWeight: '600', lineHeight: 34 }, weatherMessage: { color: colors.text, fontSize: 15, marginTop: 10 }, date: { color: colors.disabled, fontSize: 13, marginTop: 8, textTransform: 'capitalize' },
   journeyCard: { alignItems: 'center', backgroundColor: '#FCFAF8', borderColor: '#E2DDD5', borderRadius: 18, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14, padding: 18 }, eyebrow: { color: colors.disabled, fontSize: 10, fontWeight: '700', letterSpacing: .8, marginBottom: 5 }, journeyTitle: { color: colors.text, fontSize: 17, fontWeight: '600' }, hoursBlock: { alignItems: 'flex-end' }, hours: { color: colors.text, fontSize: 18, fontWeight: '700' }, hoursLabel: { color: colors.disabled, fontSize: 11, marginTop: 2 },
   registerButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 18, flexDirection: 'row', justifyContent: 'space-between', marginBottom: 32, paddingHorizontal: 20, paddingVertical: 18 }, pressed: { opacity: .84 }, registerText: { color: colors.background, fontSize: 17, fontWeight: '700' }, registerHint: { color: '#D8D2C9', fontSize: 11, marginTop: 4 }, arrow: { color: colors.background, fontSize: 29 },
   sectionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }, sectionTitle: { color: colors.text, fontSize: 17, fontWeight: '600' }, live: { alignItems: 'center', backgroundColor: '#E9E4DC', borderRadius: 10, flexDirection: 'row', gap: 5, paddingHorizontal: 8, paddingVertical: 5 }, liveDot: { backgroundColor: '#5E7A68', borderRadius: 4, height: 7, width: 7 }, liveText: { color: '#5E7A68', fontSize: 9, fontWeight: '700', letterSpacing: .7 },
