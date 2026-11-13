@@ -5,6 +5,7 @@ import LoadingScreen from '../components/LoadingScreen';
 import BiometricLockScreen from '../components/BiometricLockScreen';
 import WelcomeScreen from '../screens/WelcomeScreen';
 import LoginScreen from '../screens/LoginScreen';
+import ChangePasswordScreen from '../screens/ChangePasswordScreen';
 import HomeScreen from '../screens/HomeScreen';
 import PointValidationScreen from '../screens/PointValidationScreen';
 import QrCodesScreen from '../screens/QrCodesScreen';
@@ -13,7 +14,7 @@ import MembersScreen from '../screens/MembersScreen';
 const Stack = createNativeStackNavigator();
 
 export default function AppNavigator() {
-  const { isAuthenticated, isLoading, isLocked, isManager } = useAuth();
+  const { user, isAuthenticated, isLoading, isLocked, isManager } = useAuth();
 
   if (isLoading) {
     return <LoadingScreen />;
@@ -29,6 +30,8 @@ export default function AppNavigator() {
       >
         {isAuthenticated && isLocked ? (
           <Stack.Screen name="Lock" component={BiometricLockScreen} />
+        ) : isAuthenticated && user.mustChangePassword ? (
+          <Stack.Screen name="ChangePassword" component={ChangePasswordScreen} />
         ) : isAuthenticated ? (
           <>
             <Stack.Screen name="Home" component={HomeScreen} />

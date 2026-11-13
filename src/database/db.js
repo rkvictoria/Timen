@@ -1,7 +1,7 @@
 import * as SQLite from 'expo-sqlite';
 
 const DATABASE_NAME = 'timen.db';
-const SCHEMA_VERSION = 2;
+const SCHEMA_VERSION = 3;
 
 const RESET = `
   DROP TABLE IF EXISTS attendance;
@@ -24,6 +24,7 @@ const SCHEMA = `
     last_name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE COLLATE NOCASE,
     password_hash TEXT NOT NULL,
+    must_change_password INTEGER NOT NULL DEFAULT 0,
     workplace TEXT NOT NULL,
     role TEXT NOT NULL DEFAULT 'member' CHECK (role IN ('member', 'manager')),
     active INTEGER NOT NULL DEFAULT 1,
@@ -56,8 +57,6 @@ const SCHEMA = `
   );
 
   CREATE INDEX idx_attendance_date ON attendance (date);
-
-  PRAGMA user_version = ${SCHEMA_VERSION};
 `;
 
 let databasePromise = null;
@@ -84,7 +83,12 @@ async function migrate(db) {
   if (version >= SCHEMA_VERSION) return;
 
   await db.withTransactionAsync(async () => {
-    await db.execAsync(RESET);
-    await db.execAsync(SCHEMA);
+    if (version < 2) {
+      await db.execAsync(RESET);
+      await db.execAsync(SCHEMA);
+    } else {
+      await db.execAsync('ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 0');
+    }
+    await db.execAsync(`PRAGMA user_version = ${SCHEMA_VERSION}`);
   });
 }

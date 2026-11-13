@@ -167,22 +167,15 @@ export default function HomeScreen({ navigation }) {
       <Animated.View style={[styles.tabContent, { opacity: contentOpacity, transform: [{ scale: contentScale }] }]}>
         {activeTab === 'profile' ? (
           <ProfileView />
-        ) : activeTab === 'history' ? (
-          <HistoryView />
+          ) : activeTab === 'history' ? (
+          <HistoryView onBack={() => selectTab(0)} />
         ) : isManager ? (
           <ManagerDashboard navigation={navigation} />
         ) : (
           <>
             <View style={styles.darkHeader}>
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Sair da conta"
-                onPress={logout}
-                style={({ pressed }) => [styles.logoutButton, pressed && styles.logoutButtonPressed]}
-              >
-                <Text style={styles.logoutText}>Sair</Text>
-              </Pressable>
             </View>
+            
             <View style={styles.sheet}>
               <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
             <View style={styles.greetingBlock}>
@@ -200,6 +193,8 @@ export default function HomeScreen({ navigation }) {
               <View><Text style={styles.registerText}>{nextActionLabel(nextPointType)}</Text><Text style={styles.registerHint}>Biometria · QR Code · Localização</Text></View>
               <Text style={styles.arrow}>→</Text>
             </Pressable>}
+
+            <View style={styles.spacer} />
 
             <View style={styles.todayCard}>
               <View style={styles.todayHeader}>
@@ -246,7 +241,7 @@ const styles = StyleSheet.create({
   root: { flex: 1, backgroundColor: colors.primary }, darkHeader: { alignItems: 'flex-end', height: 94, paddingHorizontal: 22, paddingTop: 16 },
   tabContent: { flex: 1 },
   logoutButton: { borderColor: '#6C6861', borderRadius: 16, borderWidth: 1, paddingHorizontal: 13, paddingVertical: 7 }, logoutButtonPressed: { opacity: .7 }, logoutText: { color: colors.background, fontSize: 12, fontWeight: '600' },
-  sheet: { flex: 1, backgroundColor: colors.background, borderTopLeftRadius: 40, borderTopRightRadius: 40 }, content: { padding: 22, paddingTop: 34, paddingBottom: 124 },
+  sheet: { flex: 1, backgroundColor: colors.background, borderTopLeftRadius: 40, borderTopRightRadius: 40 }, content: { flexGrow: 1, padding: 22, paddingTop: 34, paddingBottom: 0 },
   bottomNav: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 25, bottom: 22, flexDirection: 'row', height: 64, justifyContent: 'space-around', left: 22, paddingHorizontal: 8, position: 'absolute', right: 22 },
   tabIndicator: { backgroundColor: '#383631', borderRadius: 14, elevation: 5, height: 50, position: 'absolute', shadowColor: '#000', shadowOffset: { width: 0, height: 3 }, shadowOpacity: .22, shadowRadius: 5, width: 50 },
   navItem: { alignItems: 'center', flex: 1, height: 48, justifyContent: 'center', zIndex: 1 },
@@ -255,5 +250,6 @@ const styles = StyleSheet.create({
   journeyCard: { alignItems: 'center', backgroundColor: '#FCFAF8', borderColor: '#E2DDD5', borderRadius: 18, borderWidth: 1, flexDirection: 'row', justifyContent: 'space-between', marginBottom: 14, padding: 18 }, eyebrow: { color: colors.disabled, fontSize: 10, fontWeight: '700', letterSpacing: .8, marginBottom: 5 }, journeyTitle: { color: colors.text, fontSize: 17, fontWeight: '600' }, hoursBlock: { alignItems: 'flex-end' }, hours: { color: colors.text, fontSize: 18, fontWeight: '700' }, hoursLabel: { color: colors.disabled, fontSize: 11, marginTop: 2 },
   registerButton: { alignItems: 'center', backgroundColor: colors.primary, borderRadius: 18, flexDirection: 'row', justifyContent: 'space-between', marginBottom: 32, paddingHorizontal: 20, paddingVertical: 18 }, pressed: { opacity: .84 }, registerText: { color: colors.background, fontSize: 17, fontWeight: '700' }, registerHint: { color: '#D8D2C9', fontSize: 11, marginTop: 4 }, arrow: { color: colors.background, fontSize: 29 },
   sectionHeader: { alignItems: 'center', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12 }, sectionTitle: { color: colors.text, fontSize: 17, fontWeight: '600' }, live: { alignItems: 'center', backgroundColor: '#E9E4DC', borderRadius: 10, flexDirection: 'row', gap: 5, paddingHorizontal: 8, paddingVertical: 5 }, liveDot: { backgroundColor: '#5E7A68', borderRadius: 4, height: 7, width: 7 }, liveText: { color: '#5E7A68', fontSize: 9, fontWeight: '700', letterSpacing: .7 },
-  todayCard: { alignSelf: 'flex-end', backgroundColor: colors.primary, borderBottomLeftRadius: 72, borderBottomRightRadius: 16, borderTopLeftRadius: 16, borderTopRightRadius: 16, marginBottom: 16, marginRight: -4, marginTop: 4, overflow: 'hidden', padding: 15, width: '92%' }, todayHeader: { alignItems: 'center', alignSelf: 'flex-end', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, paddingLeft: 0, width: '88%' }, todayEyebrow: { color: '#AAA49B', fontSize: 9, fontWeight: '700', letterSpacing: 1, marginBottom: 2 }, todayTitle: { color: colors.background, fontSize: 22, fontWeight: '600' }, todayCount: { alignItems: 'flex-end' }, todayCountValue: { color: colors.background, fontSize: 15, fontWeight: '700' }, todayCountLabel: { color: '#AAA49B', fontSize: 9, marginTop: 1 }, todayTable: { alignSelf: 'flex-end', backgroundColor: '#292824', borderRadius: 15, overflow: 'hidden', paddingHorizontal: 10, width: '88%' }, todayRow: { alignItems: 'center', flexDirection: 'row', minHeight: 42 }, todayRowBorder: { borderBottomColor: '#44413B', borderBottomWidth: 1 }, todayDot: { backgroundColor: '#A9C9B0', borderRadius: 4, height: 7, marginRight: 10, width: 7 }, todayDotPending: { backgroundColor: '#77736D' }, todayLabel: { color: '#E8E2D8', flex: 1, fontSize: 12 }, todayTime: { color: colors.background, fontSize: 13, fontWeight: '700', marginRight: 12 }, todayTimePending: { color: '#77736D' },
+  spacer: { flexGrow: 1, minHeight: 18 },
+  todayCard: { alignSelf: 'flex-end', backgroundColor: colors.primary, borderTopLeftRadius: 72, marginRight: -22, paddingBottom: 124, paddingLeft: 15, paddingRight: 22, paddingTop: 15, width: '92%' }, todayHeader: { alignItems: 'center', alignSelf: 'flex-end', flexDirection: 'row', justifyContent: 'space-between', marginBottom: 12, paddingLeft: 0, width: '88%' }, todayEyebrow: { color: '#AAA49B', fontSize: 9, fontWeight: '700', letterSpacing: 1, marginBottom: 2 }, todayTitle: { color: colors.background, fontSize: 22, fontWeight: '600' }, todayCount: { alignItems: 'flex-end' }, todayCountValue: { color: colors.background, fontSize: 15, fontWeight: '700' }, todayCountLabel: { color: '#AAA49B', fontSize: 9, marginTop: 1 }, todayTable: { alignSelf: 'flex-end', backgroundColor: '#292824', borderRadius: 15, overflow: 'hidden', paddingHorizontal: 10, width: '88%' }, todayRow: { alignItems: 'center', flexDirection: 'row', minHeight: 42 }, todayRowBorder: { borderBottomColor: '#44413B', borderBottomWidth: 1 }, todayDot: { backgroundColor: '#A9C9B0', borderRadius: 4, height: 7, marginRight: 10, width: 7 }, todayDotPending: { backgroundColor: '#77736D' }, todayLabel: { color: '#E8E2D8', flex: 1, fontSize: 12 }, todayTime: { color: colors.background, fontSize: 13, fontWeight: '700', marginRight: 12 }, todayTimePending: { color: '#77736D' },
 });

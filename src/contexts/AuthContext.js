@@ -29,8 +29,8 @@ export function AuthProvider({ children }) {
     setIsLocked(false);
   }, []);
 
-  const register = useCallback(async (firstName, lastName, email, password, workplace, role) => {
-    await authService.register(firstName, lastName, email, password, workplace, role);
+  const register = useCallback(async (firstName, lastName, email, password, organizationName) => {
+    await authService.register(firstName, lastName, email, password, organizationName);
   }, []);
 
   const logout = useCallback(async () => {
@@ -84,7 +84,8 @@ export function AuthProvider({ children }) {
   }, []);
 
   const updatePassword = useCallback(async (currentPassword, newPassword) => {
-    await authService.updatePassword(currentPassword, newPassword);
+    const session = await authService.updatePassword(currentPassword, newPassword);
+    setUser(session);
   }, []);
 
   const updatePhoto = useCallback(async (photoUri) => {
