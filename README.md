@@ -6,72 +6,81 @@ The project is built with React Native and Expo, with local SQLite persistence. 
 
 ## Features
 
+<table>
+<tr>
+<td valign="top" width="50%">
+
 ### Access and authentication
 
-- Welcome screen with login access.
-- Company registration and first administrator account creation.
-- E-mail and password login.
-- Passwords stored locally as hashes using `bcryptjs`.
-- Session persistence on the device with AsyncStorage.
-- Automatic session locking when the application is reopened.
-- Biometric unlock when the device has biometric hardware and enrollment.
-- Option to sign in with another account from the lock screen.
-- Mandatory temporary-password change on an employee's first access.
-- Employee activation and deactivation by administrators.
+- Welcome screen and company registration.
+- Administrator account creation.
+- E-mail/password login with local `bcryptjs` hashes.
+- Session persistence with AsyncStorage.
+- Automatic session lock on app reopening.
+- Biometric unlock when available.
+- Sign in with another account from the lock screen.
+- Mandatory temporary-password change on first employee access.
+- Employee activation/deactivation.
 - Organization-scoped data access.
+
+</td>
+<td valign="top" width="50%">
 
 ### Employee experience
 
-- Personalized greeting with the user's name, time of day, and current date.
-- Contextual weather message.
-- Current-weather lookup using the device location and WeatherAPI.
-- Clock-in and clock-out through workplace QR Codes.
-- Current-location validation against the workplace and its allowed radius.
-- Biometric confirmation before recording attendance.
-- QR Code scanning through the device camera.
-- Distance display relative to the workplace.
-- Location status display:
-  - Location allowed.
-  - Outside the allowed radius.
-  - Permission or location unavailable.
-- Daily work-session summary.
-- Worked-hours indicator.
-- Attendance history by day.
-- Worked-time calculation per day and across the history.
-- Workplace display for each attendance record.
-- Profile first-name, last-name, password, and photo editing.
-- E-mail and workplace display.
-- Logout.
+- Personalized greeting, date, and contextual weather message.
+- Weather lookup using device location and WeatherAPI.
+- Entry/exit through workplace QR Codes.
+- Location and allowed-radius validation.
+- Biometric confirmation before attendance registration.
+- Camera-based QR Code scanning.
+- Distance and location-status display.
+- Daily work-session and worked-hours summary.
+- Attendance history and worked-time calculation.
+- Workplace display for each record.
+- Profile name, password, and photo editing.
+- E-mail display and logout.
+
+</td>
+</tr>
+<tr>
+<td valign="top">
 
 ### Administrator experience
 
-- Dashboard with a personalized greeting and weather message.
-- Team status summary:
-  - Working.
-  - On break.
-  - Finished.
-  - No attendance record.
-- Present employee count.
-- Registered workplace count.
-- Workplace creation.
-- Individual QR Code generation for each workplace.
-- Selection between registered QR Codes.
-- Employee creation with:
-  - First name.
-  - Last name.
-  - E-mail.
-  - Temporary password.
-  - Workplace.
+- Dashboard with greeting, weather, team status, and present-employee count.
+- Workplace creation and registered-workplace count.
+- Individual QR Code generation and selection.
+- Employee creation with name, e-mail, temporary password, and workplace.
 - Employee activation and deactivation.
-- Team attendance history by date.
-- Calendar showing days with attendance records.
-- Attendance time, duration, and workplace lookup.
+- Team history by date with calendar, times, duration, and workplace.
 - Company name, e-mail, name, last name, and photo editing.
-- Main workplace location configuration:
-  - Map-based point selection.
-  - Current-device location.
+- Main workplace location setup:
+  - Map point or current-device location.
   - Allowed radius in meters.
 - Configured workplace-location removal.
+
+</td>
+<td valign="top">
+
+### Team status
+
+The administrator dashboard classifies each employee as:
+
+- Working.
+- On break.
+- Finished.
+- No attendance record.
+
+The current employee experience also reports:
+
+- Location allowed.
+- Outside the allowed radius.
+- Permission or location unavailable.
+
+</td>
+</tr>
+</table>
 
 ## Main workflow
 
@@ -101,51 +110,13 @@ The current workflow has one pair of records per day: **Entry** and **Exit**. Th
 
 ## Technology stack
 
-### Application
-
-- [React Native](https://reactnative.dev/) `0.88.1`
-- [React](https://react.dev/) `19.3.0`
-- [Expo](https://expo.dev/) `58`
-- React Navigation is used instead of Expo Router.
-
-### Navigation and interface
-
-- `@react-navigation/native`
-- `@react-navigation/native-stack`
-- `react-native-safe-area-context`
-- `@expo/vector-icons`
-- `expo-status-bar`
-- React Native components
-- `Animated` for transitions and interaction feedback
-
-### Device capabilities
-
-- `expo-camera` for QR Code scanning.
-- `expo-location` for location, geofencing, and weather lookup.
-- `expo-local-authentication` for biometrics.
-- `expo-image-picker` for profile photos.
-- `react-native-maps` for workplace-location setup and display.
-
-### Data and security
-
-- `expo-sqlite` for the local database.
-- `@react-native-async-storage/async-storage` for session persistence.
-- `bcryptjs` for password hashing.
-- `expo-crypto` for UUID and random-value generation.
-- `react-native-qrcode-svg` for QR Code generation.
-
-### Weather
-
-- WeatherAPI Current Weather API.
-- Lookup by latitude and longitude.
-- Portuguese messages based on:
-  - Rain.
-  - Storms.
-  - Snow.
-  - Fog and cloudy conditions.
-  - High temperatures.
-  - Low temperatures.
-  - Pleasant weather.
+| Area | Technologies and responsibilities |
+| --- | --- |
+| Application | [React Native](https://reactnative.dev/) `0.88.1`, [React](https://react.dev/) `19.3.0`, [Expo](https://expo.dev/) `58` |
+| Navigation and UI | `@react-navigation/native`, native stack, safe areas, vector icons, status bar, React Native components, and `Animated` |
+| Device capabilities | `expo-camera`, `expo-location`, `expo-local-authentication`, `expo-image-picker`, and `react-native-maps` |
+| Data and security | `expo-sqlite`, AsyncStorage, `bcryptjs`, `expo-crypto`, and `react-native-qrcode-svg` |
+| Weather | WeatherAPI Current Weather API queried by latitude/longitude, with Portuguese messages for rain, storms, snow, cloudy, hot, cold, and pleasant conditions |
 
 ## Architecture
 
@@ -172,37 +143,27 @@ Timen/
 
 ### Main responsibilities
 
-- `src/navigation/`: defines routes and controls which screens are available for each authentication state.
-- `src/contexts/`: maintains the session, current user, access role, and biometric lock state.
-- `src/hooks/`: exposes context access hooks.
-- `src/screens/`: flow, login, attendance-validation, and administration screens.
-- `src/components/`: reusable Home, dashboard, history, profile, and lock-screen sections.
-- `src/services/`: authentication, attendance, workplace, and weather business logic.
-- `src/database/`: SQLite initialization, configuration, and migration.
-- `src/utils/`: date, time, and duration formatting.
-- `src/constants/`: shared keys and values.
+| Directory | Responsibility |
+| --- | --- |
+| `src/navigation/` | Routes and authentication-state screen access |
+| `src/contexts/` | Session, current user, role, and biometric lock state |
+| `src/hooks/` | Context access hooks |
+| `src/screens/` | Login, attendance-validation, and administration screens |
+| `src/components/` | Home, dashboard, history, profile, and lock-screen sections |
+| `src/services/` | Authentication, attendance, workplace, and weather business logic |
+| `src/database/` | SQLite initialization, configuration, and migrations |
+| `src/utils/` | Date, time, and duration formatting |
+| `src/constants/` | Shared keys and values |
 
 ## Navigation
 
-### Unauthenticated user
-
-- `Welcome`
-- `Login`
-
-### Authenticated and locked session
-
-- `Lock`
-
-### Employee's first access
-
-- `ChangePassword`
-
-### Authenticated user
-
-- `Home`
-- `PointValidation` for employees
-- `QrCodes` for administrators
-- `Members` for administrators
+| State | Available screens |
+| --- | --- |
+| Unauthenticated | `Welcome`, `Login` |
+| Authenticated and locked | `Lock` |
+| Employee's first access | `ChangePassword` |
+| Authenticated employee | `Home`, `PointValidation` |
+| Authenticated administrator | `Home`, `QrCodes`, `Members` |
 
 History, profile, and attendance registration are accessed through the Home screen's bottom navigation. History content changes according to the user's role.
 
